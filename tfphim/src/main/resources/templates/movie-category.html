@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Danh mục phim - TF-Phim</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
+
+<main class="category-page" th:if="${errorMessage == null}">
+    <section class="category-hero">
+        <div class="category-hero-inner">
+            <p class="category-eyebrow">Danh mục phim</p>
+            <h1>
+                <i th:class="${categoryIcon}"></i>
+                <span th:text="${categoryTitle}">Phim Bộ</span>
+            </h1>
+            <p class="category-description" th:text="${categoryDescription}">Mô tả danh mục.</p>
+
+            <div class="category-stats">
+                <span class="category-stat">
+                    <strong th:text="${currentPage}">1</strong>
+                    <span>Trang hiện tại</span>
+                </span>
+                <span class="category-stat">
+                    <strong th:text="${totalPages}">1</strong>
+                    <span>Tổng số trang</span>
+                </span>
+                <span class="category-stat">
+                    <strong th:text="${totalItems}">0</strong>
+                    <span>Tổng số phim</span>
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <section class="category-panel">
+        <div class="section-header">
+            <h2>Kết quả hiển thị</h2>
+            <span class="category-page-indicator" th:text="${'Trang ' + currentPage + ' / ' + totalPages}">Trang 1 / 1</span>
+        </div>
+
+        <div class="movie-grid" th:if="${!#lists.isEmpty(movies)}">
+            <a class="movie-card-link"
+               th:each="movie : ${movies}"
+               th:href="@{/phim/{slug}(slug=${movie['slug']})}">
+                <article class="movie-card"
+                         th:attr="data-slug=${movie['slug']},
+                                  data-name=${movie['name']},
+                                  data-original-name=${movie['original_name'] != null ? movie['original_name'] : movie['origin_name']},
+                                  data-thumb=${movie['thumb_url']},
+                                  data-poster=${movie['poster_url']},
+                                  data-quality=${movie['quality']},
+                                  data-episode=${movie['episode_current'] != null and movie['episode_current'] != '' ? movie['episode_current'] : movie['current_episode']},
+                                  data-language=${movie['language']},
+                                  data-year=${movie['year']},
+                                  data-description=${movie['description']},
+                                  data-time=${movie['time']},
+                                  data-status=${movie['status']},
+                                  data-rating=${movie['tmdb_vote_average']}">
+                    <div class="card-thumb">
+                        <img th:src="${movie['thumb_url'] != null and movie['thumb_url'] != '' ? movie['thumb_url'] : movie['poster_url']}"
+                             th:alt="${movie['name']}" loading="lazy">
+                        <div class="overlay">
+                            <div class="play-btn"><i class="fa-solid fa-play"></i></div>
+                        </div>
+                        <span class="badge hd" th:text="${movie['quality'] != null and movie['quality'] != '' ? movie['quality'] : 'HD'}">HD</span>
+                        <span class="badge ep"
+                              style="top:8px;left:auto;right:8px;"
+                              th:if="${movie['episode_current'] != null or movie['current_episode'] != null}"
+                              th:text="${movie['episode_current'] != null and movie['episode_current'] != '' ? movie['episode_current'] : movie['current_episode']}">Full</span>
+                    </div>
+
+                    <div class="card-info">
+                        <div class="card-title" th:text="${movie['name']}">Tên phim</div>
+                        <div class="card-language-badges"
+                             th:if="${movie['language'] != null and movie['language'] != ''}"
+                             th:with="normalizedLanguage=${#strings.toLowerCase(movie['language'])}">
+                            <span class="mini-badge lang-sub"
+                                  th:if="${#strings.contains(normalizedLanguage, 'vietsub')}">P.&#272;&#7873;</span>
+                            <span class="mini-badge lang-dub"
+                                  th:if="${#strings.contains(normalizedLanguage, 'thuyet minh') or #strings.contains(normalizedLanguage, 'thuyết minh')}">T.Minh</span>
+                            <span class="mini-badge lang-voice"
+                                  th:if="${#strings.contains(normalizedLanguage, 'long tieng') or #strings.contains(normalizedLanguage, 'lồng tiếng')}">L.Ti&#7871;ng</span>
+                        </div>
+                    </div>
+                </article>
+            </a>
+        </div>
+
+        <div class="loading-spinner category-empty" th:if="${#lists.isEmpty(movies)}">
+            Không có phim trong danh mục này.
+        </div>
+
+        <nav class="pagination-compact category-pagination" th:if="${totalPages > 1}">
+            <a class="pagination-arrow"
+               th:classappend="${!hasPrevious} ? ' disabled'"
+               th:href="${hasPrevious} ? ${paginationBasePath + '?page=' + (currentPage - 1)} : '#'"
+               aria-label="Trang truoc">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+
+            <form class="pagination-status pagination-form"
+                  th:attr="action=${paginationBasePath}"
+                  method="get"
+                  aria-label="Thong tin phan trang">
+                <div class="pagination-form-main">
+                    <span class="pagination-label">Trang</span>
+                    <input class="pagination-input"
+                           type="number"
+                           name="page"
+                           min="1"
+                           th:max="${totalPages}"
+                           th:value="${currentPage}"
+                           inputmode="numeric"
+                           aria-label="Nhap so trang">
+                    <span class="pagination-separator" th:text="${'/ ' + totalPages}">/ 472</span>
+                </div>
+                <small class="pagination-note">Xóa số trang trước khi nhập!</small>
+            </form>
+
+            <a class="pagination-arrow"
+               th:classappend="${!hasNext} ? ' disabled'"
+               th:href="${hasNext} ? ${paginationBasePath + '?page=' + (currentPage + 1)} : '#'"
+               aria-label="Trang sau">
+                <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        </nav>
+    </section>
+</main>
+
+<main class="detail-page detail-error" th:if="${errorMessage != null}">
+    <div class="detail-error-card">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <h1>Không tải được danh mục</h1>
+        <p th:text="${errorMessage}">Không thể tải dữ liệu danh mục phim vào lúc này.</p>
+        <a href="/" class="primary-btn">Quay lại trang chủ</a>
+    </div>
+</main>
+
+<th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>
+
+<script th:src="@{/js/main.js}"></script>
+</body>
+</html>

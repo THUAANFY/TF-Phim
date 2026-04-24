@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Xem phim - TF-Phim</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
+
+<main class="watch-page" th:if="${errorMessage == null}">
+    <section class="watch-layout">
+        <div class="watch-main watch-main-full">
+            <div class="player-shell">
+                <video id="moviePlayer"
+                       class="watch-video"
+                       controls
+                       playsinline
+                       preload="metadata"
+                       th:attr="data-m3u8=${selectedStreamUrl},data-embed=${selectedEpisode['embed']}"></video>
+
+                <iframe id="playerEmbedFrame"
+                        class="watch-frame watch-frame-fallback"
+                        title="Nguồn phát nhúng"
+                        allow="autoplay; fullscreen; picture-in-picture"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allowfullscreen
+                        style="display:none"></iframe>
+                <div id="playerLoadingState" class="player-loading-state" style="display:none" aria-live="polite">
+                    <div class="player-loading-card">
+                        <span class="player-loading-spinner" aria-hidden="true"></span>
+                        <h3>Đang kết nối nguồn phát</h3>
+                    </div>
+                </div>
+
+                <div id="playerStartGate"
+                     class="player-start-gate"
+                     th:style="'--player-poster: url(' + (${movie['poster_url']} ?: ${movie['thumb_url']}) + ')'">
+                    <div class="player-start-card">
+                        <span class="player-start-chip"
+                              th:text="${selectedEpisode['name'] != null and selectedEpisode['name'] != '' ? 'Tập ' + selectedEpisode['name'] : 'Sẵn sàng phát'}">Tập hiện tại</span>
+                        <h3 th:text="${movie['name']}">Tên phim</h3>
+                        <p>Nguồn phát chỉ được tải khi bạn bấm xem để tránh gọi API tự động lúc reload trang.</p>
+                        <button id="startPlaybackButton" type="button" class="primary-btn player-start-btn">
+                            <i class="fa-solid fa-play"></i> Xem ngay
+                        </button>
+                    </div>
+                </div>
+
+                <div id="playerFallbackNotice" class="player-fallback-notice" style="display:none">
+                    <div class="player-fallback-card">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <h3>Không thể phát trực tiếp trên trang</h3>
+                        <p>Nguồn phim hiện tại đang chặn nhúng hoặc giới hạn truy cập. Bạn có thể mở nguồn phát ở tab mới.</p>
+                        <div class="player-fallback-actions">
+                            <a id="openEmbedFallback"
+                               class="secondary-btn"
+                               href="#"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               style="display:none">
+                                <i class="fa-solid fa-up-right-from-square"></i> Mở nguồn gốc
+                            </a>
+                            <a id="openM3u8Fallback"
+                               class="secondary-btn"
+                               href="#"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               style="display:none">
+                                <i class="fa-solid fa-link"></i> Mở m3u8
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="watch-info-card">
+                <div class="watch-info-poster-wrap">
+                    <img class="watch-info-poster" th:src="${movie['thumb_url']} ?: ${movie['poster_url']}" th:alt="${movie['name']}">
+                </div>
+
+                <div class="watch-info-main">
+                    <p class="detail-breadcrumb">
+                        Xem:
+                        <a th:href="@{/phim/{slug}(slug=${movie['slug']})}" th:text="${movie['name']}">Tên phim</a>
+                    </p>
+
+                    <h1 th:text="${movie['name']}">Tên phim</h1>
+                    <p class="watch-original-name" th:if="${movie['original_name']}" th:text="${movie['original_name']}">Original Name</p>
+
+                    <div class="watch-meta-chips">
+                        <span class="watch-chip watch-chip-rating" th:if="${movie['tmdb_vote_average'] != null}" th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.4</span>
+                        <span class="watch-chip" th:if="${movie['quality']}" th:text="${movie['quality']}">T16</span>
+                        <span class="watch-chip" th:if="${releaseYear != null and releaseYear != 'N/A'}" th:text="${releaseYear}">2020</span>
+                        <span class="watch-chip" th:if="${selectedServerLabel}" th:text="${selectedServerLabel}">Vietsub</span>
+                        <span class="watch-chip" th:if="${selectedEpisode['name'] != null and selectedEpisode['name'] != ''}" th:text="${'Tập ' + selectedEpisode['name']}">Tập 1</span>
+                    </div>
+
+                    <div class="detail-tags watch-info-tags" th:if="${!#lists.isEmpty(categories)}">
+                        <span th:each="category : ${categories}" class="detail-tag" th:text="${category.name}">Võ thuật</span>
+                    </div>
+
+                    <div class="watch-progress-row" th:if="${showEpisodeProgress}">
+                        <span class="watch-progress-pill"
+                              th:classappend="${episodeProgressCompleted} ? ' completed' : ' incomplete'">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                            <span th:text="${episodeProgressText}">Đã chiếu 12 / 24 tập</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="watch-info-side">
+                    <p class="watch-description" th:text="${movie['description']} ?: 'Chưa có mô tả cho phim này.'">Mô tả phim</p>
+
+                    <div class="watch-info-actions">
+                        <a class="secondary-btn" th:if="${selectedStreamUrl != null and selectedStreamUrl != ''}" th:href="${selectedStreamUrl}" target="_blank" rel="noopener noreferrer">
+                            <i class="fa-solid fa-link"></i> Mở m3u8
+                        </a>
+                        <a class="secondary-btn" th:if="${selectedEpisode['embed'] != null and selectedEpisode['embed'] != ''}" th:href="${selectedEpisode['embed']}" target="_blank" rel="noopener noreferrer">
+                            <i class="fa-solid fa-up-right-from-square"></i> Mở embed gốc
+                        </a>
+                        <a class="watch-detail-link" th:href="@{/phim/{slug}(slug=${movie['slug']})}">
+                            Thông tin phim <i class="fa-solid fa-angle-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="watch-panel watch-episodes-panel">
+            <div class="watch-panel-head">
+                <h2><i class="fa-solid fa-list"></i> Danh sách tập</h2>
+            </div>
+
+            <div class="episode-browser">
+                <div class="episode-browser-nav">
+                    <div class="episode-browser-nav-main">
+                        <div class="episode-server-tabs" role="tablist" aria-label="Nguồn phát">
+                            <button type="button"
+                                    class="episode-server-tab"
+                                    th:each="serverItem, serverStat : ${pagedEpisodes}"
+                                    th:text="${serverItem['server_label']}"
+                                    th:classappend="${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)} ? ' active'"
+                                    th:attr="data-server-target=${'watch-server-' + serverStat.index},aria-selected=${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)}">
+                                Vietsub #1
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="episode-server-panels">
+                    <div class="server-block episode-server"
+                         th:each="serverItem, serverStat : ${pagedEpisodes}"
+                         th:id="${'watch-server-' + serverStat.index}"
+                         th:classappend="${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)} ? ' active'"
+                         th:attr="data-active-page=${serverItem['activePage']}">
+                        <div class="episode-range-tabs" th:if="${#lists.size(serverItem['pages']) > 1}">
+                            <button type="button"
+                                    class="episode-range-tab"
+                                    th:each="page : ${serverItem['pages']}"
+                                    th:text="${'Tập ' + page['label']}"
+                                    th:classappend="${page['pageNumber'] == serverItem['activePage']} ? ' active'"
+                                    th:attr="data-page-target=${page['pageNumber']}">
+                                Tập 01 - Tập 50
+                            </button>
+                        </div>
+
+                        <div class="episode-page"
+                             th:each="page : ${serverItem['pages']}"
+                             th:attr="data-page=${page['pageNumber']}">
+                            <div class="episode-list">
+                                <a class="episode-item"
+                                   th:each="episode : ${page['items']}"
+                                   th:classappend="${selectedServer == serverItem['server_name'] and selectedTap == episode['slug']} ? ' active'"
+                                   th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${serverItem['server_name']})}">
+                                    <span class="episode-item-label">
+                                        <i class="fa-solid fa-play"></i>
+                                        <span th:text="${'Tập ' + episode['name']}">Tập 1</span>
+                                    </span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<main class="detail-page detail-error" th:if="${errorMessage != null}">
+    <div class="detail-error-card">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <h1>Không tải được trang xem</h1>
+        <p th:text="${errorMessage}">Không thể tải trang xem phim vào lúc này.</p>
+        <a th:if="${movie != null and movie['slug'] != null}" th:href="@{/phim/{slug}(slug=${movie['slug']})}" class="primary-btn">Về trang chi tiết</a>
+        <a href="/" class="secondary-btn">Về trang chủ</a>
+    </div>
+</main>
+
+<th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>
+
+<script th:src="@{/js/main.js}"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const video = document.getElementById('moviePlayer');
+    const embedFrame = document.getElementById('playerEmbedFrame');
+    const fallbackNotice = document.getElementById('playerFallbackNotice');
+    const loadingState = document.getElementById('playerLoadingState');
+    const startGate = document.getElementById('playerStartGate');
+    const startPlaybackButton = document.getElementById('startPlaybackButton');
+    const embedLink = document.getElementById('openEmbedFallback');
+    const m3u8Link = document.getElementById('openM3u8Fallback');
+    if (!video) return;
+
+    const m3u8 = video.dataset.m3u8;
+    const embed = video.dataset.embed;
+    let fallbackShown = false;
+    let playbackStarted = false;
+    let embedAttempted = false;
+    let hls = null;
+    let fallbackTimer = null;
+
+    const resetPlayerSurface = () => {
+        if (fallbackTimer) {
+            window.clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+        }
+        video.style.display = 'block';
+        if (embedFrame) {
+            embedFrame.style.display = 'none';
+            embedFrame.removeAttribute('src');
+        }
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        if (fallbackNotice) {
+            fallbackNotice.style.display = 'none';
+        }
+    };
+
+    const showLoadingState = () => {
+        if (loadingState) {
+            loadingState.style.display = 'grid';
+        }
+        if (fallbackNotice) {
+            fallbackNotice.style.display = 'none';
+        }
+    };
+
+    const scheduleFallback = (delay = 4000) => {
+        if (fallbackShown || fallbackTimer) return;
+        fallbackTimer = window.setTimeout(() => {
+            fallbackTimer = null;
+            if (!tryEmbedPlayback()) {
+                showFallback();
+            }
+        }, delay);
+    };
+
+    const tryEmbedPlayback = () => {
+        if (embedAttempted || !embed || !embedFrame) return false;
+        embedAttempted = true;
+
+        if (startGate) {
+            startGate.style.display = 'none';
+        }
+
+        video.style.display = 'none';
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        if (fallbackNotice) {
+            fallbackNotice.style.display = 'none';
+        }
+
+        embedFrame.src = embed;
+        embedFrame.style.display = 'block';
+        return true;
+    };
+
+    const showFallback = () => {
+        if (fallbackShown || !fallbackNotice) return;
+        fallbackShown = true;
+        if (startGate) {
+            startGate.style.display = 'none';
+        }
+        video.style.display = 'none';
+        if (loadingState) {
+            loadingState.style.display = 'none';
+        }
+        if (embedFrame) {
+            embedFrame.style.display = 'none';
+        }
+        fallbackNotice.style.display = 'grid';
+
+        if (embedLink && embed) {
+            embedLink.href = embed;
+            embedLink.style.display = 'inline-flex';
+        }
+
+        if (m3u8Link && m3u8) {
+            m3u8Link.href = m3u8;
+            m3u8Link.style.display = 'inline-flex';
+        }
+    };
+
+    const startPlayback = () => {
+        if (playbackStarted) return;
+        playbackStarted = true;
+
+        if (startGate) {
+            startGate.style.display = 'none';
+        }
+
+        showLoadingState();
+        resetPlayerSurface();
+        showLoadingState();
+        video.addEventListener('loadedmetadata', resetPlayerSurface, { once: true });
+        video.addEventListener('playing', resetPlayerSurface, { once: true });
+        video.addEventListener('error', () => scheduleFallback(1200), { once: true });
+
+        if (m3u8 && video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = m3u8;
+            scheduleFallback();
+            video.play().catch(() => {});
+            return;
+        }
+
+        if (m3u8 && window.Hls && window.Hls.isSupported()) {
+            hls = new window.Hls({
+                enableWorker: true,
+                lowLatencyMode: false,
+                backBufferLength: 90
+            });
+            hls.loadSource(m3u8);
+            hls.attachMedia(video);
+            scheduleFallback();
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                resetPlayerSurface();
+                video.play().catch(() => {});
+            });
+            hls.on(window.Hls.Events.ERROR, (_, data) => {
+                if (!data || !data.fatal) {
+                    return;
+                }
+
+                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                    try {
+                        hls.startLoad();
+                        scheduleFallback(2500);
+                        return;
+                    } catch (_) {
+                    }
+                }
+
+                if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+                    try {
+                        hls.recoverMediaError();
+                        scheduleFallback(2500);
+                        return;
+                    } catch (_) {
+                    }
+                }
+
+                if (!tryEmbedPlayback()) {
+                    showFallback();
+                }
+            });
+            return;
+        }
+
+        if (!tryEmbedPlayback()) {
+            showFallback();
+        }
+    };
+
+    if (startPlaybackButton) {
+        startPlaybackButton.addEventListener('click', startPlayback);
+    }
+});
+</script>
+</body>
+</html>

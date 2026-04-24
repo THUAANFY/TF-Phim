@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Chi tiết phim - TF-Phim</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
+
+<main class="detail-page" th:if="${errorMessage == null}">
+    <section class="detail-hero" th:style="'--detail-bg: url(' + (${movie['poster_url']} ?: ${movie['thumb_url']}) + ')'">
+        <div class="detail-overlay"></div>
+        <div class="detail-container">
+            <div class="detail-sidebar">
+                <div class="detail-poster">
+                    <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                </div>
+
+                <div class="detail-description">
+                    <h3>Giới thiệu:</h3>
+                    <p th:text="${movie['description']} ?: 'Chưa có mô tả cho phim này.'">Mô tả phim</p>
+                </div>
+            </div>
+
+            <div class="detail-content">
+                <p class="detail-breadcrumb">
+                    <a href="/">Trang chủ</a>
+                    <span>/</span>
+                    <span th:text="${movie['name']}">Tên phim</span>
+                </p>
+
+                <h1 th:text="${movie['name']}">Tên phim</h1>
+                <h2 th:if="${movie['original_name']}" th:text="${movie['original_name']}">Original Name</h2>
+
+                <button type="button"
+                        class="detail-info-toggle"
+                        aria-expanded="false"
+                        aria-controls="detail-mobile-description">
+                    <span>Thông tin phim</span>
+                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                </button>
+
+                <div class="detail-mobile-description" id="detail-mobile-description" hidden>
+                    <div class="detail-badges detail-mobile-badges">
+                        <span class="badge hd" th:text="${movie['quality']} ?: 'HD'">HD</span>
+                        <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
+                        <span class="badge badge-lang"
+                              th:each="languageBadge : ${languageBadges}"
+                              th:classappend="${#strings.contains(#strings.toLowerCase(languageBadge), 'viet')} ? ' lang-sub' : (${#strings.contains(#strings.toLowerCase(languageBadge), 'thuy')} ? ' lang-dub' : ' lang-voice')"
+                              th:text="${languageBadge}">Vietsub</span>
+                    </div>
+                    <div class="detail-progress-row" th:if="${showEpisodeProgress}">
+                        <span class="detail-progress-pill"
+                              th:classappend="${episodeProgressCompleted} ? ' completed' : ' incomplete'">
+                            <i class="fa-solid fa-clapperboard"></i>
+                            <span th:text="${episodeProgressText}">Đã chiếu 12 / 24 tập</span>
+                        </span>
+                    </div>
+
+                    <div class="detail-tags detail-mobile-tags" th:if="${!#lists.isEmpty(categories)}">
+                        <span th:each="category : ${categories}" class="detail-tag" th:text="${category.name}">The loai</span>
+                    </div>
+                    <h3>Giới thiệu:</h3>
+                    <p th:text="${movie['description']} ?: 'Chưa có mô tả cho phim này.'">Mô tả phim</p>
+                </div>
+
+                <div class="detail-badges">
+                    <span class="badge hd" th:text="${movie['quality']} ?: 'HD'">HD</span>
+                    <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
+                    <span class="badge badge-lang"
+                          th:each="languageBadge : ${languageBadges}"
+                          th:classappend="${#strings.equals(languageBadge, 'Vietsub')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'Thuyết minh')} ? ' lang-dub' : ' lang-voice')"
+                          th:text="${languageBadge}">Vietsub</span>
+                </div>
+                <div class="detail-progress-row" th:if="${showEpisodeProgress}">
+                    <span class="detail-progress-pill"
+                          th:classappend="${episodeProgressCompleted} ? ' completed' : ' incomplete'">
+                        <i class="fa-solid fa-clapperboard"></i>
+                        <span th:text="${episodeProgressText}">Đã chiếu 12 / 24 tập</span>
+                    </span>
+                </div>
+
+                <div class="detail-tags" th:if="${!#lists.isEmpty(categories)}">
+                    <span th:each="category : ${categories}" class="detail-tag" th:text="${category.name}">Hành động</span>
+                </div>
+
+                <div class="detail-actions">
+                    <a class="primary-btn" th:href="@{/xem/{slug}(slug=${movie['slug']})}">
+                        <i class="fa-solid fa-play"></i> Xem phim
+                    </a>
+                    <div class="detail-inline-actions" aria-label="Tác vụ phim">
+                        <button type="button"
+                                class="detail-inline-action"
+                                data-favorite-toggle="true"
+                                th:attr="data-slug=${movie['slug']},
+                                         data-name=${movie['name']},
+                                         data-original-name=${movie['original_name'] != null ? movie['original_name'] : movie['origin_name']},
+                                         data-poster=${movie['poster_url']},
+                                         data-thumb=${movie['thumb_url']},
+                                         data-language=${movie['language']},
+                                         data-quality=${movie['quality']},
+                                         data-year=${movie['year']}">
+                            <i class="fa-solid fa-heart"></i>
+                            <span>Yêu thích</span>
+                        </button>
+                        <button type="button" class="detail-inline-action">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Thêm vào</span>
+                        </button>
+                        <button type="button" class="detail-inline-action">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>Chia sẻ</span>
+                        </button>
+                        <button type="button" class="detail-inline-action">
+                            <i class="fa-solid fa-comment-dots"></i>
+                            <span>Bình luận</span>
+                        </button>
+                    </div>
+                    <a class="secondary-btn" th:if="${firstEpisodeStreamUrl != null and firstEpisodeStreamUrl != ''}"
+                       th:href="${firstEpisodeStreamUrl}" target="_blank" rel="noopener noreferrer">
+                        <i class="fa-solid fa-link"></i> Link m3u8
+                    </a>
+                </div>
+
+                <div class="detail-meta-grid">
+                    <div class="meta-item">
+                        <span>Năm</span>
+                        <strong th:text="${releaseYear}">2019</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span>Thời lượng</span>
+                        <strong th:text="${movie['time']} ?: 'Đang cập nhật'">180 phút</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span>Đạo diễn</span>
+                        <strong th:text="${movie['director']} ?: 'Đang cập nhật'">Anthony Russo</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span>Diễn viên</span>
+                        <strong th:text="${movie['casts']} ?: 'Đang cập nhật'">Robert Downey Jr.</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="detail-sections">
+        <div class="detail-section watch-panel watch-episodes-panel" th:if="${!#lists.isEmpty(pagedEpisodes)}">
+            <div class="watch-panel-head">
+                <h2><i class="fa-solid fa-server"></i> Danh sách phát</h2>
+            </div>
+
+            <div class="episode-browser">
+                <div class="episode-browser-nav">
+                    <div class="episode-browser-nav-main">
+                        <div class="episode-server-tabs" role="tablist" aria-label="Nguồn phát">
+                            <button type="button"
+                                    class="episode-server-tab"
+                                    th:each="server, serverStat : ${pagedEpisodes}"
+                                    th:text="${server['server_label']}"
+                                    th:classappend="${serverStat.first} ? ' active'"
+                                    th:attr="data-server-target=${'detail-server-' + serverStat.index},aria-selected=${serverStat.first}">
+                                Vietsub #1
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="episode-server-panels">
+                    <div class="server-block episode-server"
+                         th:each="server, serverStat : ${pagedEpisodes}"
+                         th:id="${'detail-server-' + serverStat.index}"
+                         th:classappend="${serverStat.first} ? ' active'"
+                         th:attr="data-active-page=${server['activePage']}">
+                        <div class="episode-range-tabs" th:if="${#lists.size(server['pages']) > 1}">
+                            <button type="button"
+                                    class="episode-range-tab"
+                                    th:each="page : ${server['pages']}"
+                                    th:text="${'Tập ' + page['label']}"
+                                    th:classappend="${page['pageNumber'] == server['activePage']} ? ' active'"
+                                    th:attr="data-page-target=${page['pageNumber']}">
+                                Tập 01 - Tập 50
+                            </button>
+                        </div>
+
+                        <div class="episode-page"
+                             th:each="page : ${server['pages']}"
+                             th:attr="data-page=${page['pageNumber']}">
+                            <div class="episode-list detail-episode-list">
+                                <a class="episode-item" th:each="episode : ${page['items']}"
+                                   th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${server['server_name']})}">
+                                    <span class="episode-item-label">
+                                        <i class="fa-solid fa-play"></i>
+                                        <span th:text="${'Tập ' + episode['name']}">Tập 1</span>
+                                    </span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<main class="detail-page detail-error" th:if="${errorMessage != null}">
+    <div class="detail-error-card">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <h1>Không tải được phim</h1>
+        <p th:text="${errorMessage}">Không thể tải chi tiết phim vào lúc này.</p>
+        <a href="/" class="primary-btn">Quay lại trang chủ</a>
+    </div>
+</main>
+
+<th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>
+
+<script th:src="@{/js/main.js}"></script>
+</body>
+</html>

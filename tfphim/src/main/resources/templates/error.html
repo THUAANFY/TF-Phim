@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Lỗi - TF-Phim</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
+
+<main class="detail-page detail-error">
+    <div class="detail-error-card">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <div class="error-code" th:text="${statusCode}">500</div>
+        <h1 th:text="${errorTitle}">Có lỗi xảy ra</h1>
+        <p th:text="${errorMessage}">Đã xảy ra lỗi khi xử lý yêu cầu.</p>
+        <p th:if="${requestUri}" class="error-path">
+            Yêu cầu: <span th:text="${requestUri}">/example</span>
+        </p>
+        <div class="detail-actions">
+            <a href="/" class="primary-btn">Về trang chủ</a>
+            <a th:if="${!isNotFound}" href="javascript:history.back()" class="secondary-btn">Quay lại</a>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>
+</body>
+</html>
