@@ -95,15 +95,9 @@
                     <div class="detail-inline-actions" aria-label="Tác vụ phim">
                         <button type="button"
                                 class="detail-inline-action"
-                                data-favorite-toggle="true"
-                                th:attr="data-slug=${movie['slug']},
-                                         data-name=${movie['name']},
-                                         data-original-name=${movie['original_name'] != null ? movie['original_name'] : movie['origin_name']},
-                                         data-poster=${movie['poster_url']},
-                                         data-thumb=${movie['thumb_url']},
-                                         data-language=${movie['language']},
-                                         data-quality=${movie['quality']},
-                                         data-year=${movie['year']}">
+                                data-favorite-disabled="true"
+                                aria-disabled="true"
+                                title="Tinh nang yeu thich da duoc go bo">
                             <i class="fa-solid fa-heart"></i>
                             <span>Yêu thích</span>
                         </button>

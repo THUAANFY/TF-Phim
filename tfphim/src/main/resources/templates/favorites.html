@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${pageTitle} + ' - TF-Phim'">Phim y&#234;u th&#237;ch - TF-Phim</title>
+    <title th:text="${pageTitle} + ' - TF-Phim'">Phim yêu thích - TF-Phim</title>
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -11,93 +11,19 @@
 <body>
 <th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
 
-<main class="favorite-page" th:if="${errorMessage == null}">
+<main class="favorite-page">
     <section class="favorite-shell">
         <div class="favorite-topbar">
-            <h1>Y&#234;u th&#237;ch</h1>
-            <!-- <span class="favorite-count" th:text="${favoriteCount + ' phim'}">0 phim</span> -->
+            <h1>Yêu thích</h1>
         </div>
 
-        <div class="movie-grid favorite-grid" th:if="${!#lists.isEmpty(favorites)}">
-            <article class="favorite-card"
-                     th:each="movie : ${favorites}"
-                     th:attr="data-favorite-item=${movie.movieSlug}">
-                <a class="movie-card-link"
-                   th:href="@{/phim/{slug}(slug=${movie.movieSlug})}">
-                    <article class="movie-card"
-                             th:attr="data-slug=${movie.movieSlug},
-                                      data-name=${movie.movieName},
-                                      data-original-name=${movie.originalName},
-                                      data-thumb=${movie.thumbUrl},
-                                      data-poster=${movie.posterUrl},
-                                      data-language=${movie.language},
-                                      data-quality=${movie.quality},
-                                      data-year=${movie.year}">
-                        <div class="card-thumb">
-                            <img th:src="${movie.thumbUrl != null and movie.thumbUrl != '' ? movie.thumbUrl : movie.posterUrl}"
-                                 th:alt="${movie.movieName}"
-                                 loading="lazy">
-                            <div class="overlay">
-                                <div class="play-btn"><i class="fa-solid fa-play"></i></div>
-                            </div>
-                            <span class="badge hd"
-                                  th:text="${movie.quality != null and movie.quality != '' ? movie.quality : 'HD'}">HD</span>
-                            <span class="badge ep"
-                                  style="top:8px;left:auto;right:8px;"
-                                  th:if="${movie.year != null and movie.year != ''}"
-                                  th:text="${movie.year}">2025</span>
-                        </div>
-                        <div class="card-info">
-                            <div class="card-title" th:text="${movie.movieName}">Ten phim</div>
-                            <div class="card-language-badges"
-                                 th:if="${movie.languageBadgeItems != null and !#lists.isEmpty(movie.languageBadgeItems)}">
-                                <span class="mini-badge"
-                                      th:each="badgeItem : ${movie.languageBadgeItems}"
-                                      th:classappend="${' ' + badgeItem.className}"
-                                      th:text="${badgeItem.label}">P.&#272;&#7873;</span>
-                            </div>
-                        </div>
-                    </article>
-                </a>
-                <button type="button"
-                        class="favorite-remove-btn"
-                        data-favorite-remove="true"
-                        aria-label="Xoa khoi yeu thich"
-                        th:attr="data-slug=${movie.movieSlug},
-                                 data-name=${movie.movieName},
-                                 data-original-name=${movie.originalName},
-                                 data-poster=${movie.posterUrl},
-                                 data-thumb=${movie.thumbUrl},
-                                 data-language=${movie.language},
-                                 data-quality=${movie.quality},
-                                 data-year=${movie.year}">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </article>
-        </div>
-
-        <div class="loading-spinner category-empty favorite-empty" data-favorites-empty th:if="${#lists.isEmpty(favorites)}">
+        <div class="loading-spinner category-empty favorite-empty" data-favorites-empty>
             <div class="favorite-empty-icon">
                 <i class="fa-solid fa-heart-circle-plus"></i>
             </div>
-            B&#7841;n ch&#432;a c&#243; phim n&#224;o trong danh s&#225;ch y&#234;u th&#237;ch.
-        </div>
-        <div class="loading-spinner category-empty favorite-empty" data-favorites-empty hidden th:if="${!#lists.isEmpty(favorites)}">
-            <div class="favorite-empty-icon">
-                <i class="fa-solid fa-heart-circle-plus"></i>
-            </div>
-            B&#7841;n ch&#432;a c&#243; phim n&#224;o trong danh s&#225;ch y&#234;u th&#237;ch.
+            Tính năng này đang được phát triển, vui lòng quay lại sau!
         </div>
     </section>
-</main>
-
-<main class="detail-page detail-error" th:if="${errorMessage != null}">
-    <div class="detail-error-card">
-        <i class="fa-solid fa-circle-exclamation"></i>
-        <h1>Kh&#244;ng t&#7843;i &#273;&#432;&#7907;c danh s&#225;ch y&#234;u th&#237;ch</h1>
-        <p th:text="${errorMessage}">Kh&#244;ng th&#7875; t&#7843;i danh s&#225;ch phim y&#234;u th&#237;ch l&#250;c n&#224;y.</p>
-        <a href="/" class="primary-btn">Quay l&#7841;i trang ch&#7911;</a>
-    </div>
 </main>
 
 <th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>

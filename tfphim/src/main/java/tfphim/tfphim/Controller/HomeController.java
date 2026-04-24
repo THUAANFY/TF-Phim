@@ -1,7 +1,5 @@
 package tfphim.tfphim.Controller;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -25,9 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import tfphim.tfphim.DTO.FavoriteMovieResponse;
-import tfphim.tfphim.Services.FavoriteMovieService;
-import tfphim.tfphim.Services.FavoriteViewerService;
 import tfphim.tfphim.Services.MovieApiService;
 
 @Controller
@@ -54,17 +49,8 @@ public class HomeController {
             )
     );
     private final MovieApiService movieApiService;
-    private final FavoriteMovieService favoriteMovieService;
-    private final FavoriteViewerService favoriteViewerService;
-
-    public HomeController(
-            MovieApiService movieApiService,
-            FavoriteMovieService favoriteMovieService,
-            FavoriteViewerService favoriteViewerService
-    ) {
+    public HomeController(MovieApiService movieApiService) {
         this.movieApiService = movieApiService;
-        this.favoriteMovieService = favoriteMovieService;
-        this.favoriteViewerService = favoriteViewerService;
     }
 
     @ModelAttribute
@@ -160,29 +146,10 @@ public class HomeController {
     }
 
     @GetMapping("/yeu-thich")
-    public String favoriteMovies(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            Model model
-    ) {
-        try {
-            String viewerId = favoriteViewerService.resolveViewerId(request, response);
-            List<FavoriteMovieResponse> favorites = favoriteMovieService.getFavorites(viewerId);
-            List<Map<String, Object>> favoriteViewItems = favorites.stream()
-                    .map(this::buildFavoriteViewItem)
-                    .toList();
-
-            model.addAttribute("pageTitle", "Phim yêu thích");
-            model.addAttribute("favoritePage", true);
-            model.addAttribute("favorites", favoriteViewItems);
-            model.addAttribute("favoriteCount", favorites.size());
-            return "favorites";
-        } catch (IllegalArgumentException ex) {
-            model.addAttribute("pageTitle", "Phim yêu thích");
-            model.addAttribute("favoritePage", true);
-            model.addAttribute("errorMessage", "Không thể tải danh sách phim yêu thích lúc này.");
-            return "favorites";
-        }
+    public String favoriteMovies(Model model) {
+        model.addAttribute("pageTitle", "Phim yêu thích");
+        model.addAttribute("favoritePage", true);
+        return "favorites";
     }
 
     @GetMapping("/quoc-gia/{slug}")
@@ -529,49 +496,6 @@ public class HomeController {
         }
 
         return items;
-    }
-
-    private Map<String, Object> buildFavoriteViewItem(FavoriteMovieResponse favorite) {
-        Map<String, Object> item = new HashMap<>();
-        item.put("movieSlug", favorite.movieSlug());
-        item.put("movieName", favorite.movieName());
-        item.put("originalName", favorite.originalName());
-        item.put("posterUrl", favorite.posterUrl());
-        item.put("thumbUrl", favorite.thumbUrl());
-        item.put("language", favorite.language());
-        item.put("quality", favorite.quality());
-        item.put("year", favorite.year());
-
-        try {
-            Map<String, Object> payload = movieApiService.getMovieDetailData(favorite.movieSlug());
-            Map<String, Object> movie = extractMovieDetail(payload);
-
-            if (!movie.isEmpty()) {
-                item.put("movieName", valueOrDefault(movie.get("name"), favorite.movieName()));
-                item.put("originalName", valueOrDefault(
-                        movie.get("original_name") != null ? movie.get("original_name") : movie.get("origin_name"),
-                        favorite.originalName()
-                ));
-                item.put("posterUrl", valueOrDefault(movie.get("poster_url"), favorite.posterUrl()));
-                item.put("thumbUrl", valueOrDefault(movie.get("thumb_url"), favorite.thumbUrl()));
-                item.put("language", valueOrDefault(movie.get("language"), favorite.language()));
-                item.put("quality", valueOrDefault(movie.get("quality"), favorite.quality()));
-                item.put("year", valueOrDefault(movie.get("year"), favorite.year()));
-            }
-        } catch (Exception ex) {
-            log.debug("Cannot refresh favorite metadata for slug={}", favorite.movieSlug(), ex);
-        }
-
-        item.put("languageBadgeItems", buildLanguageBadgeItems(String.valueOf(item.getOrDefault("language", ""))));
-        return item;
-    }
-
-    private String valueOrDefault(Object value, String fallback) {
-        String normalized = value == null ? "" : String.valueOf(value).trim();
-        if (!normalized.isEmpty() && !"null".equalsIgnoreCase(normalized)) {
-            return normalized;
-        }
-        return fallback == null ? "" : fallback;
     }
 
     private String normalizeLanguageText(String language) {

@@ -1,5 +1,4 @@
 const API_BASE = "/api/movies";
-const FAVORITES_API_BASE = "/api/favorites";
 
 const MOVIE_TYPES = {
     "phim-moi": "phim-moi",
@@ -327,24 +326,10 @@ function mergeMovieData(baseMovie, detailMovie) {
 }
 
 const favoriteStore = {
-    loaded: false,
-    loadingPromise: null,
+    loaded: true,
     slugs: new Set(),
     pending: new Set()
 };
-
-function normalizeFavoritePayload(movie) {
-    return {
-        movieSlug: movie.slug || "",
-        movieName: movie.name || "",
-        originalName: getMovieOriginalName(movie) || null,
-        posterUrl: movie.poster_url || null,
-        thumbUrl: movie.thumb_url || null,
-        language: movie.language || null,
-        quality: movie.quality || null,
-        year: getMovieYear(movie) || null
-    };
-}
 
 function isFavoriteSlug(slug) {
     return Boolean(slug) && favoriteStore.slugs.has(slug);
@@ -361,85 +346,35 @@ function syncFavoriteButton(button, movie) {
 
     const slug = movie?.slug || "";
     button.dataset.favoriteSlug = slug;
-    button.classList.toggle("is-active", isFavoriteSlug(slug));
-    button.classList.toggle("is-pending", isFavoritePending(slug));
-    button.disabled = !slug || isFavoritePending(slug);
-    button.setAttribute("aria-pressed", String(isFavoriteSlug(slug)));
+    button.classList.remove("is-active", "is-pending");
+    button.disabled = true;
+    button.setAttribute("aria-pressed", "false");
+    button.setAttribute("aria-disabled", "true");
 }
 
 async function ensureFavoritesLoaded() {
-    if (favoriteStore.loaded) {
-        return favoriteStore.slugs;
-    }
-
-    if (!favoriteStore.loadingPromise) {
-        favoriteStore.loadingPromise = requestJson(FAVORITES_API_BASE)
-            .then((payload) => {
-                favoriteStore.slugs = new Set(payload?.favoriteSlugs || []);
-                favoriteStore.loaded = true;
-                return favoriteStore.slugs;
-            })
-            .catch((error) => {
-                console.error("Load favorites failed:", error);
-                return favoriteStore.slugs;
-            })
-            .finally(() => {
-                favoriteStore.loadingPromise = null;
-            });
-    }
-
-    return favoriteStore.loadingPromise;
+    return favoriteStore.slugs;
 }
 
-async function toggleFavoriteMovie(movie) {
-    const payload = normalizeFavoritePayload(movie);
-    const slug = payload.movieSlug;
-    if (!slug || !payload.movieName) {
-        return false;
-    }
-
-    favoriteStore.pending.add(slug);
-
-    try {
-        if (isFavoriteSlug(slug)) {
-            await requestJson(`${FAVORITES_API_BASE}/${encodeURIComponent(slug)}`, {
-                method: "DELETE"
-            });
-            favoriteStore.slugs.delete(slug);
-            showToast("Đã xóa khỏi danh sách yêu thích");
-            return false;
-        }
-
-        await requestJson(FAVORITES_API_BASE, {
-            method: "POST",
-            body: JSON.stringify(payload)
-        });
-        favoriteStore.slugs.add(slug);
-        showToast("Đã thêm vào danh sách yêu thích");
-        return true;
-    } catch (error) {
-        showToast("Khong the cap nhat danh sach yeu thich. Vui long thu lai.", "error");
-        throw error;
-    } finally {
-        favoriteStore.pending.delete(slug);
-    }
+async function toggleFavoriteMovie() {
+    showToast("Tinh nang yeu thich da duoc go bo.", "error");
+    return false;
 }
 
 function updateFavoriteCount() {
     document.querySelectorAll(".favorite-page .category-page-indicator").forEach((element) => {
-        element.textContent = `${favoriteStore.slugs.size} phim`;
+        element.textContent = "0 phim";
     });
 
     const stat = document.querySelector(".favorite-page .category-stat strong");
     if (stat) {
-        stat.textContent = String(favoriteStore.slugs.size);
+        stat.textContent = "0";
     }
 }
 
 function syncFavoriteEmptyState() {
-    const cards = document.querySelectorAll("[data-favorite-item]");
     document.querySelectorAll("[data-favorites-empty]").forEach((emptyState) => {
-        emptyState.hidden = cards.length > 0;
+        emptyState.hidden = false;
     });
     updateFavoriteCount();
 }
@@ -451,36 +386,9 @@ function bindFavoritePageActions() {
     }
 
     syncFavoriteEmptyState();
-
-    favoritePage.addEventListener("click", async (event) => {
-        const removeButton = event.target.closest("[data-favorite-remove='true']");
-        if (!removeButton) {
-            return;
-        }
-
-        const movie = {
-            slug: removeButton.dataset.slug || "",
-            name: removeButton.dataset.name || "",
-            original_name: removeButton.dataset.originalName || "",
-            poster_url: removeButton.dataset.poster || "",
-            thumb_url: removeButton.dataset.thumb || "",
-            language: removeButton.dataset.language || "",
-            quality: removeButton.dataset.quality || "",
-            year: removeButton.dataset.year || ""
-        };
-
-        try {
-            syncFavoriteButton(removeButton, movie);
-            const nextState = await toggleFavoriteMovie(movie);
-            if (!nextState) {
-                removeButton.closest("[data-favorite-item]")?.remove();
-                syncFavoriteEmptyState();
-            }
-        } catch (error) {
-            console.error("Remove favorite on page failed:", error);
-        } finally {
-            syncFavoriteButton(removeButton, movie);
-        }
+    favoritePage.querySelectorAll("[data-favorite-remove='true']").forEach((button) => {
+        button.disabled = true;
+        button.setAttribute("aria-disabled", "true");
     });
 }
 
@@ -1164,35 +1072,14 @@ function bindMovieHoverPopup(root = document) {
 }
 
 function bindDetailFavoriteButton() {
-    const favoriteButton = document.querySelector("[data-favorite-toggle='true']");
+    const favoriteButton = document.querySelector("[data-favorite-disabled='true']");
     if (!favoriteButton) {
         return;
     }
 
-    const movie = {
-        slug: favoriteButton.dataset.slug || "",
-        name: favoriteButton.dataset.name || "",
-        original_name: favoriteButton.dataset.originalName || "",
-        poster_url: favoriteButton.dataset.poster || "",
-        thumb_url: favoriteButton.dataset.thumb || "",
-        language: favoriteButton.dataset.language || "",
-        quality: favoriteButton.dataset.quality || "",
-        year: favoriteButton.dataset.year || ""
-    };
-
-    ensureFavoritesLoaded().then(() => {
-        syncFavoriteButton(favoriteButton, movie);
-    });
-
-    favoriteButton.addEventListener("click", async () => {
-        try {
-            syncFavoriteButton(favoriteButton, movie);
-            await toggleFavoriteMovie(movie);
-        } catch (error) {
-            console.error("Toggle detail favorite failed:", error);
-        } finally {
-            syncFavoriteButton(favoriteButton, movie);
-        }
+    syncFavoriteButton(favoriteButton, { slug: favoriteButton.dataset.slug || "" });
+    favoriteButton.addEventListener("click", () => {
+        showToast("Tinh nang yeu thich da duoc go bo.", "error");
     });
 }
 
@@ -1832,12 +1719,6 @@ function bindBackToTop() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const warmFavorites = () => ensureFavoritesLoaded().catch(() => {});
-    if ("requestIdleCallback" in window) {
-        window.requestIdleCallback(warmFavorites, { timeout: 1500 });
-    } else {
-        window.setTimeout(warmFavorites, 800);
-    }
     bindSearchEvents();
     bindLiveSearch();
     bindCategoryLinks();
