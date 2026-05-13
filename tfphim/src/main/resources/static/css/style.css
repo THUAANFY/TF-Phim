@@ -2194,7 +2194,7 @@ body.home-page .main-content {
     overflow: hidden;
 }
 
-@media (max-width: 1024px), (hover: none), (pointer: coarse) {
+@media (max-width: 1024px) {
     .movie-hover-popup {
         display: none !important;
     }

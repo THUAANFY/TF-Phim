@@ -190,10 +190,10 @@ function getLanguageBadges(language) {
         badges.push({ label: "P.Đề", className: "lang-sub" });
     }
     if (normalized.includes("thuyết minh") || normalized.includes("thuyet minh")) {
-        badges.push({ label: "Thuyết minh", className: "lang-dub" });
+        badges.push({ label: "T.Minh", className: "lang-dub" });
     }
     if (normalized.includes("lồng tiếng") || normalized.includes("long tieng")) {
-        badges.push({ label: "Lồng tiếng", className: "lang-voice" });
+        badges.push({ label: "L.Tiếng", className: "lang-voice" });
     }
 
     return badges;
@@ -207,10 +207,10 @@ function getLanguageBadges(language) {
         badges.push({ label: "P.Đề", className: "lang-sub" });
     }
     if (normalized.includes("thuyet minh") || normalized.includes("thuyết minh")) {
-        badges.push({ label: "Thuyết Minh", className: "lang-dub" });
+        badges.push({ label: "T.Minh", className: "lang-dub" });
     }
     if (normalized.includes("long tieng") || normalized.includes("lồng tiếng")) {
-        badges.push({ label: "Lồng Tiếng", className: "lang-voice" });
+        badges.push({ label: "L.Tiếng", className: "lang-voice" });
     }
 
     return badges;
@@ -330,6 +330,19 @@ const favoriteStore = {
     slugs: new Set(),
     pending: new Set()
 };
+
+function normalizeFavoritePayload(movie) {
+    return {
+        movieSlug: movie?.slug || "",
+        movieName: movie?.name || "",
+        originalName: movie?.original_name || movie?.origin_name || "",
+        posterUrl: movie?.poster_url || "",
+        thumbUrl: movie?.thumb_url || "",
+        language: movie?.language || "",
+        quality: movie?.quality || "",
+        year: movie?.year || ""
+    };
+}
 
 function isFavoriteSlug(slug) {
     return Boolean(slug) && favoriteStore.slugs.has(slug);
@@ -779,7 +792,7 @@ function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim."
 }
 
 function bindMovieHoverPopup(root = document) {
-    const desktopQuery = window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 1025px)");
+    const desktopQuery = window.matchMedia("(min-width: 1025px)");
     const popupId = "movieHoverPopup";
     const detailCache = bindMovieHoverPopup.detailCache || new Map();
     bindMovieHoverPopup.detailCache = detailCache;
@@ -830,6 +843,8 @@ function bindMovieHoverPopup(root = document) {
             document.body.appendChild(popup);
         }
 
+        let isPointerInsidePopup = false;
+
         const setPopupPosition = (card) => {
             const rect = card.getBoundingClientRect();
             const popupRect = popup.getBoundingClientRect();
@@ -856,7 +871,6 @@ function bindMovieHoverPopup(root = document) {
             const name = movie.name || "Khong ro";
             const originalName = getMovieOriginalName(movie);
             const image = getMovieImage(movie);
-            const description = getMovieDescription(movie) || "Chua co mo ta cho phim nay.";
             const rating = getMovieRating(movie);
             const quality = movie.quality || "";
             const ageRating = getMovieAgeRating(movie);
@@ -879,7 +893,6 @@ function bindMovieHoverPopup(root = document) {
             const originalEl = popup.querySelector(".movie-hover-popup__original");
             const chipsEl = popup.querySelector(".movie-hover-popup__chips");
             const statusEl = popup.querySelector(".movie-hover-popup__status");
-            const descriptionEl = popup.querySelector(".movie-hover-popup__description");
             const watchEl = popup.querySelector('[data-popup-action="watch"]');
             const detailEl = popup.querySelector('[data-popup-action="detail"]');
             const likeEl = popup.querySelector('[data-popup-action="like"]');
@@ -902,9 +915,6 @@ function bindMovieHoverPopup(root = document) {
             if (statusEl) {
                 statusEl.textContent = statusLine;
                 statusEl.hidden = !statusLine;
-            }
-            if (descriptionEl) {
-                descriptionEl.textContent = description;
             }
             if (watchEl) {
                 watchEl.href = watchHref;
@@ -995,9 +1005,13 @@ function bindMovieHoverPopup(root = document) {
         };
 
         popup.addEventListener("mouseenter", () => {
+            isPointerInsidePopup = true;
             hideTimer = clearTimer(hideTimer);
         });
-        popup.addEventListener("mouseleave", scheduleHide);
+        popup.addEventListener("mouseleave", () => {
+            isPointerInsidePopup = false;
+            scheduleHide();
+        });
         popup.addEventListener("click", (event) => {
             const action = event.target.closest("[data-popup-action]");
             if (!action) {
@@ -1032,7 +1046,12 @@ function bindMovieHoverPopup(root = document) {
             }
         });
 
-        document.addEventListener("scroll", hidePopup, true);
+        document.addEventListener("scroll", () => {
+            if (isPointerInsidePopup) {
+                return;
+            }
+            hidePopup();
+        }, true);
         document.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 hidePopup();
@@ -1090,7 +1109,7 @@ async function loadSection(type, containerId) {
     }
 
     try {
-        const movies = await fetchMoviesWithLimit(type, 12);
+        const movies = await fetchMoviesWithLimit(type, getHomeSectionLimit(grid));
         renderMovies(containerId, movies);
     } catch (error) {
         console.error("Load section failed:", type, error);
@@ -1098,6 +1117,36 @@ async function loadSection(type, containerId) {
             grid.innerHTML = '<div class="loading-spinner">Loi tai du lieu. Vui long thu lai.</div>';
         }
     }
+}
+
+function getGridColumnCount(grid) {
+    if (!grid) {
+        return 1;
+    }
+
+    const columnsText = window.getComputedStyle(grid).gridTemplateColumns;
+    if (!columnsText || columnsText === "none") {
+        return 1;
+    }
+
+    const columns = columnsText.split(" ").map((item) => item.trim()).filter(Boolean);
+    return Math.max(1, columns.length);
+}
+
+function getHomeSectionLimit(grid) {
+    const fallbackLimit = 12;
+    if (!(grid instanceof HTMLElement)) {
+        return fallbackLimit;
+    }
+
+    if (window.innerWidth < 1025) {
+        return fallbackLimit;
+    }
+
+    const columns = getGridColumnCount(grid);
+    const rows = 2;
+    const desktopLimit = columns * rows;
+    return Math.max(fallbackLimit, Math.min(desktopLimit, 36));
 }
 
 function initHomeSections() {
@@ -1114,12 +1163,15 @@ function initHomeSections() {
     }
 
     const loadedSections = new Set();
+    const loadedSectionLimits = new Map();
     const loadOnce = (section) => {
         if (!section || loadedSections.has(section.containerId)) {
             return;
         }
 
         loadedSections.add(section.containerId);
+        const grid = byId(section.containerId);
+        loadedSectionLimits.set(section.containerId, getHomeSectionLimit(grid));
         loadSection(section.type, section.containerId);
     };
 
@@ -1150,6 +1202,31 @@ function initHomeSections() {
                 observer.observe(element);
             }
         });
+
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+        if (resizeTimer) {
+            window.clearTimeout(resizeTimer);
+        }
+
+        resizeTimer = window.setTimeout(() => {
+            availableSections.forEach((section) => {
+                if (!loadedSections.has(section.containerId)) {
+                    return;
+                }
+
+                const grid = byId(section.containerId);
+                const nextLimit = getHomeSectionLimit(grid);
+                const prevLimit = loadedSectionLimits.get(section.containerId);
+                if (nextLimit === prevLimit) {
+                    return;
+                }
+
+                loadedSectionLimits.set(section.containerId, nextLimit);
+                loadSection(section.type, section.containerId);
+            });
+        }, 220);
+    });
 }
 
 async function performSearch(rawKeyword) {
