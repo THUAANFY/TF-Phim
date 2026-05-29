@@ -4911,7 +4911,7 @@ body.home-page .main-content {
     border-radius: 5px;
     background: #272a36;
     color: #b7bac4;
-    font-size: 0.rem;
+    font-size: 0.7rem;
     font-weight: 400;
     white-space: nowrap;
 }
@@ -5700,7 +5700,7 @@ body.home-page .main-content {
     .detail-section .episode-item,
     .detail-episode-list .episode-item {
         width: 100%;
-        font-size: 0.9rem;
+        font-size: 0.75rem;
     }
     .episode-list,
     .watch-panel .episode-list,
