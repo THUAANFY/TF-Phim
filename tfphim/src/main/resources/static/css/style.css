@@ -5027,27 +5027,27 @@ body.home-page .main-content {
     .detail-server-card__body::before {
         background:
             linear-gradient(90deg,
-                rgba(var(--card-bg-start), 0.94) 0%,
-                rgba(var(--card-bg-start), 0.90) 37%,
-                rgba(var(--card-bg-start), 0.76) 48%,
-                rgba(var(--card-bg-end), 0.48) 60%,
-                rgba(var(--card-bg-end), 0.16) 73%,
-                rgba(var(--card-bg-end), 0) 88%);
+                rgba(var(--card-bg-start), 0.96) 0%,
+                rgba(var(--card-bg-start), 0.94) 50%,
+                rgba(var(--card-bg-start), 0.86) 62%,
+                rgba(var(--card-bg-end), 0.58) 74%,
+                rgba(var(--card-bg-end), 0.22) 86%,
+                rgba(var(--card-bg-end), 0) 100%);
     }
 
     .detail-server-card__content {
-        padding-right: clamp(100px, 33%, 168px);
+        padding-right: clamp(70px, 20%, 118px);
     }
 
     .detail-server-card h3 {
-        max-width: none;
+        max-width: 24ch;
         font-size: 0.9rem;
     }
 
     .detail-server-card__art {
-        width: clamp(130px, 36%, 190px);
-        -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.12) 8%, rgba(0, 0, 0, 0.38) 20%, rgba(0, 0, 0, 0.76) 36%, #000 54%, #000 100%);
-        mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.12) 8%, rgba(0, 0, 0, 0.38) 20%, rgba(0, 0, 0, 0.76) 36%, #000 54%, #000 100%);
+        width: clamp(118px, 31%, 170px);
+        -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.08) 10%, rgba(0, 0, 0, 0.26) 24%, rgba(0, 0, 0, 0.62) 42%, #000 62%, #000 100%);
+        mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.08) 10%, rgba(0, 0, 0, 0.26) 24%, rgba(0, 0, 0, 0.62) 42%, #000 62%, #000 100%);
     }
 
     .detail-content-tab {
