@@ -217,9 +217,31 @@ function getLanguageBadges(language) {
 }
 
 function getMovieImage(movie) {
-    return movie.poster_url
-        || movie.thumb_url
+    return resolveMovieImageUrl(movie.poster_url)
+        || resolveMovieImageUrl(movie.thumb_url)
         || "https://via.placeholder.com/600x900?text=No+Image";
+}
+
+function resolveMovieImageUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw) {
+        return "";
+    }
+
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+        return raw;
+    }
+
+    if (raw.startsWith("//")) {
+        return `https:${raw}`;
+    }
+
+    const normalizedPath = raw.startsWith("/") ? raw.slice(1) : raw;
+    if (normalizedPath.startsWith("upload/")) {
+        return `https://img.phimapi.com/${normalizedPath}`;
+    }
+
+    return raw;
 }
 
 function getMovieOriginalName(movie) {
@@ -233,6 +255,25 @@ function getMovieDescription(movie) {
         || "";
 }
 
+function cleanTextSnippet(value, maxLength = 220) {
+    const cleaned = String(value || "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (cleaned.length <= maxLength) {
+        return cleaned;
+    }
+
+    const sliced = cleaned.slice(0, maxLength).trim();
+    const lastSpace = sliced.lastIndexOf(" ");
+    return `${(lastSpace > 120 ? sliced.slice(0, lastSpace) : sliced).trim()}...`;
+}
+
 function getMovieYear(movie) {
     return movie.year
         || movie.release_year
@@ -241,8 +282,17 @@ function getMovieYear(movie) {
 }
 
 function getMovieRating(movie) {
-    const rating = movie.tmdb_vote_average || movie.imdb?.vote_average || movie.rating || "";
+    const rating = movie.tmdb_vote_average
+        || movie.tmdb?.vote_average
+        || movie.imdb?.vote_average
+        || movie.rating
+        || "";
     return String(rating || "").trim();
+}
+
+function hasVisibleRating(rating) {
+    const normalized = String(rating || "").trim();
+    return Boolean(normalized) && normalized !== "0" && normalized !== "0.0";
 }
 
 function getMovieDuration(movie) {
@@ -264,6 +314,53 @@ function getMovieStatusLine(movie) {
         || "";
 }
 
+function extractMovieCategories(movie) {
+    const rawCategory = movie?.category;
+    if (Array.isArray(rawCategory)) {
+        return rawCategory
+            .map((item) => (typeof item === "string" ? item : item?.name || ""))
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+    }
+
+    const text = String(rawCategory || "").trim();
+    if (!text) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+            return parsed
+                .map((item) => (typeof item === "string" ? item : item?.name || ""))
+                .map((item) => String(item || "").trim())
+                .filter(Boolean);
+        }
+    } catch (error) {
+        // Ignore JSON parse error and fallback to pattern parsing.
+    }
+
+    const extractedNames = [];
+    const namePattern = /name=([^,}\]]+)/g;
+    let match = namePattern.exec(text);
+    while (match) {
+        const name = String(match[1] || "").trim();
+        if (name) {
+            extractedNames.push(name);
+        }
+        match = namePattern.exec(text);
+    }
+    if (extractedNames.length) {
+        return extractedNames;
+    }
+
+    return text.split("|").map((item) => item.trim()).filter(Boolean);
+}
+
+function getMovieCategoryLine(movie, limit = 3) {
+    return extractMovieCategories(movie).slice(0, limit).join(" - ");
+}
+
 function createMovieDatasetAttributes(movie) {
     return [
         ["slug", movie.slug || ""],
@@ -273,11 +370,13 @@ function createMovieDatasetAttributes(movie) {
         ["poster", movie.poster_url || ""],
         ["quality", movie.quality || ""],
         ["episode", movie.episode_current || movie.current_episode || ""],
-        ["language", movie.language || ""],
+        ["language", movie.lang || movie.language || ""],
         ["year", getMovieYear(movie)],
         ["description", getMovieDescription(movie)],
         ["time", getMovieDuration(movie)],
+        ["category", getMovieCategoryLine(movie)],
         ["status", getMovieStatusLine(movie)],
+        ["trailer-url", movie.trailer_url || ""],
         ["rating", getMovieRating(movie)]
     ]
         .filter(([, value]) => String(value || "").trim() !== "")
@@ -299,7 +398,9 @@ function readMovieDataFromCard(card) {
         year: card.dataset.year || "",
         description: card.dataset.description || "",
         time: card.dataset.time || "",
+        category: card.dataset.category || "",
         status: card.dataset.status || "",
+        trailer_url: card.dataset.trailerUrl || "",
         tmdb_vote_average: card.dataset.rating || ""
     };
 }
@@ -316,11 +417,13 @@ function mergeMovieData(baseMovie, detailMovie) {
         quality: detailMovie.quality || baseMovie.quality,
         episode_current: detailMovie.episode_current || detailMovie.current_episode || baseMovie.episode_current,
         current_episode: detailMovie.current_episode || detailMovie.episode_current || baseMovie.current_episode,
-        language: detailMovie.language || baseMovie.language,
+        language: detailMovie.lang || detailMovie.language || baseMovie.lang || baseMovie.language,
         year: getMovieYear(detailMovie) || getMovieYear(baseMovie),
         description: getMovieDescription(detailMovie) || getMovieDescription(baseMovie),
         time: getMovieDuration(detailMovie) || getMovieDuration(baseMovie),
+        category: detailMovie.category || baseMovie.category,
         status: getMovieStatusLine(detailMovie) || getMovieStatusLine(baseMovie),
+        trailer_url: detailMovie.trailer_url || baseMovie.trailer_url,
         tmdb_vote_average: getMovieRating(detailMovie) || getMovieRating(baseMovie)
     };
 }
@@ -338,7 +441,7 @@ function normalizeFavoritePayload(movie) {
         originalName: movie?.original_name || movie?.origin_name || "",
         posterUrl: movie?.poster_url || "",
         thumbUrl: movie?.thumb_url || "",
-        language: movie?.language || "",
+        language: movie?.lang || movie?.language || "",
         quality: movie?.quality || "",
         year: movie?.year || ""
     };
@@ -406,12 +509,14 @@ function bindFavoritePageActions() {
 }
 
 function createMovieCard(movie) {
-    const thumb = movie.thumb_url || movie.poster_url || "https://via.placeholder.com/200x300?text=No+Image";
+    const thumb = getMovieImage(movie);
     const name = movie.name || "Khong ro";
     const episode = movie.episode_current || movie.current_episode || "";
     const quality = movie.quality || "HD";
+    const year = getMovieYear(movie);
+    const rating = getMovieRating(movie);
     const slug = movie.slug || "";
-    const languageBadges = getLanguageBadges(movie.language);
+    const languageBadges = getLanguageBadges(movie.lang || movie.language);
     const href = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
     const disabledClass = slug ? "" : " is-disabled";
     const datasetAttrs = createMovieDatasetAttributes(movie);
@@ -427,6 +532,12 @@ function createMovieCard(movie) {
                     </div>
                     <span class="badge hd">${escapeHtml(quality)}</span>
                     ${episode ? `<span class="badge ep" style="top:8px;left:auto;right:8px;">${escapeHtml(episode)}</span>` : ""}
+                    ${(year || hasVisibleRating(rating)) ? `
+                        <div class="card-thumb-badges">
+                            ${year ? `<span class="badge badge-year">${escapeHtml(year)}</span>` : ""}
+                            ${hasVisibleRating(rating) ? `<span class="badge badge-rating">IMDb ${escapeHtml(rating)}</span>` : ""}
+                        </div>
+                    ` : ""}
                 </div>
                 <div class="card-info">
                     <div class="card-title" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
@@ -442,8 +553,7 @@ function createMovieCard(movie) {
 }
 
 function getHeroDescription(movie) {
-    return movie.description
-        || movie.content
+    return cleanTextSnippet(movie.content || movie.description || movie.excerpt, 230)
         || movie.origin_name
         || "Khám phá bộ phim đang được quan tâm nhất tuần này trên TF-Phim.";
 }
@@ -484,7 +594,7 @@ function createHeroTags(movie) {
 
 function renderHeroThumbs(movies, activeIndex) {
     return movies.map((movie, index) => {
-        const thumb = movie.thumb_url || movie.poster_url || "https://via.placeholder.com/160x90?text=No+Image";
+        const thumb = resolveMovieImageUrl(movie.thumb_url) || resolveMovieImageUrl(movie.poster_url) || "https://via.placeholder.com/160x90?text=No+Image";
         const name = movie.name || "Phim nổi bật";
         return `
             <button type="button" class="hero-thumb ${index === activeIndex ? "is-active" : ""}" data-hero-index="${index}" aria-label="${escapeHtml(name)}">
@@ -529,6 +639,7 @@ async function loadHeroSlider() {
         let activePointerId = null;
         let pointerMoved = false;
         let swipedDuringPointer = false;
+        const heroDetailCache = new Map();
         const autoplayDelay = 20000;
         const contentRevealDelay = 500;
 
@@ -539,8 +650,8 @@ async function loadHeroSlider() {
         `;
 
         const getHeroImage = (movie) => (
-            movie?.poster_url
-            || movie?.thumb_url
+            resolveMovieImageUrl(movie?.thumb_url)
+            || resolveMovieImageUrl(movie?.poster_url)
             || "https://via.placeholder.com/1280x720?text=No+Image"
         );
 
@@ -587,6 +698,20 @@ async function loadHeroSlider() {
             }
         };
 
+        const getHeroMovieWithContent = async (movie) => {
+            if (!movie?.slug || movie.content) {
+                return movie;
+            }
+
+            if (heroDetailCache.has(movie.slug)) {
+                return mergeMovieData(movie, heroDetailCache.get(movie.slug));
+            }
+
+            const detailMovie = await fetchMovieDetail(movie.slug);
+            heroDetailCache.set(movie.slug, detailMovie || {});
+            return mergeMovieData(movie, detailMovie || {});
+        };
+
         const syncBackdrop = (movie, immediate = false) => {
             if (!heroBackdropLayers.length) {
                 return;
@@ -629,6 +754,13 @@ async function loadHeroSlider() {
 
             if (!heroCopy || immediate) {
                 updateHeroContent(movie);
+                getHeroMovieWithContent(movie)
+                    .then((movieWithContent) => {
+                        if (currentToken === renderToken) {
+                            updateHeroContent(movieWithContent);
+                        }
+                    })
+                    .catch((error) => console.error("Load hero content failed:", error));
                 if (heroCopy) {
                     heroCopy.classList.remove("is-transitioning", "is-visible");
                     void heroCopy.offsetWidth;
@@ -645,10 +777,21 @@ async function loadHeroSlider() {
                     return;
                 }
 
-                updateHeroContent(movie);
-                heroCopy.classList.remove("is-transitioning");
-                void heroCopy.offsetWidth;
-                heroCopy.classList.add("is-visible");
+                getHeroMovieWithContent(movie)
+                    .catch((error) => {
+                        console.error("Load hero content failed:", error);
+                        return movie;
+                    })
+                    .then((movieWithContent) => {
+                        if (currentToken !== renderToken) {
+                            return;
+                        }
+
+                        updateHeroContent(movieWithContent);
+                        heroCopy.classList.remove("is-transitioning");
+                        void heroCopy.offsetWidth;
+                        heroCopy.classList.add("is-visible");
+                    });
             }, contentRevealDelay);
         };
 
@@ -870,18 +1013,24 @@ function bindMovieHoverPopup(root = document) {
         const setPopupContent = (movie) => {
             const name = movie.name || "Khong ro";
             const originalName = getMovieOriginalName(movie);
-            const image = getMovieImage(movie);
+            const image = resolveMovieImageUrl(movie.thumb_url) || resolveMovieImageUrl(movie.poster_url) || "https://via.placeholder.com/600x900?text=No+Image";
             const rating = getMovieRating(movie);
             const quality = movie.quality || "";
             const ageRating = getMovieAgeRating(movie);
             const year = getMovieYear(movie);
             const duration = getMovieDuration(movie);
-            const statusLine = getMovieStatusLine(movie);
+            const categoryLine = getMovieCategoryLine(movie);
             const slug = movie.slug || "";
-            const watchHref = slug ? `/xem/${encodeURIComponent(slug)}` : "#";
+            const currentEpisode = String(movie.episode_current || movie.current_episode || "").trim();
             const detailHref = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
+            const trailerUrl = String(movie.trailer_url || "").trim();
+            const isTrailerMovie = currentEpisode.toLowerCase() === "trailer";
+            const watchLabel = isTrailerMovie ? "Xem trailer" : "Xem ngay";
+            const watchHref = isTrailerMovie
+                ? (trailerUrl || detailHref)
+                : (slug ? `/xem/${encodeURIComponent(slug)}` : "#");
             const chips = [
-                rating ? `<span class="movie-hover-popup__chip movie-hover-popup__chip--rating">IMDb ${escapeHtml(rating)}</span>` : "",
+                hasVisibleRating(rating) ? `<span class="movie-hover-popup__chip movie-hover-popup__chip--rating">IMDb ${escapeHtml(rating)}</span>` : "",
                 quality ? `<span class="movie-hover-popup__chip">${escapeHtml(quality)}</span>` : "",
                 ageRating ? `<span class="movie-hover-popup__chip">${escapeHtml(ageRating)}</span>` : "",
                 year ? `<span class="movie-hover-popup__chip">${escapeHtml(year)}</span>` : "",
@@ -913,13 +1062,18 @@ function bindMovieHoverPopup(root = document) {
                 chipsEl.hidden = !chips;
             }
             if (statusEl) {
-                statusEl.textContent = statusLine;
-                statusEl.hidden = !statusLine;
+                statusEl.textContent = categoryLine;
+                statusEl.hidden = !categoryLine;
             }
             if (watchEl) {
                 watchEl.href = watchHref;
-                watchEl.classList.toggle("is-disabled", !slug);
-                watchEl.setAttribute("aria-disabled", String(!slug));
+                const hasWatchHref = watchHref && watchHref !== "#";
+                watchEl.classList.toggle("is-disabled", !hasWatchHref);
+                watchEl.setAttribute("aria-disabled", String(!hasWatchHref));
+                const watchTextEl = watchEl.querySelector("span");
+                if (watchTextEl) {
+                    watchTextEl.textContent = watchLabel;
+                }
             }
             if (detailEl) {
                 detailEl.href = detailHref;
@@ -1491,6 +1645,10 @@ function bindEpisodePagination() {
             });
 
             serverBlock.dataset.activePage = normalizedPage;
+            serverBlock.dispatchEvent(new CustomEvent("episode-page-change", {
+                bubbles: true,
+                detail: { pageNumber: normalizedPage }
+            }));
         };
 
         rangeTabs.forEach((tab) => {
@@ -1503,6 +1661,151 @@ function bindEpisodePagination() {
     });
 }
 
+function bindDetailContentTabs() {
+    document.querySelectorAll(".detail-content-tabs").forEach((tabsRoot) => {
+        const tabButtons = Array.from(tabsRoot.querySelectorAll("[data-detail-tab]"));
+        const panelScope = tabsRoot.parentElement;
+        if (!tabButtons.length || !panelScope) {
+            return;
+        }
+
+        const panels = Array.from(panelScope.querySelectorAll("[data-detail-panel]"));
+
+        const setActiveTab = (target) => {
+            tabButtons.forEach((button) => {
+                const isActive = button.dataset.detailTab === target;
+                button.classList.toggle("active", isActive);
+                button.setAttribute("aria-selected", String(isActive));
+            });
+
+            panels.forEach((panel) => {
+                const isActive = panel.dataset.detailPanel === target;
+                panel.classList.toggle("active", isActive);
+                panel.hidden = !isActive;
+            });
+        };
+
+        tabButtons.forEach((button) => {
+            button.addEventListener("click", () => {
+                setActiveTab(button.dataset.detailTab);
+            });
+        });
+
+        const activeButton = tabButtons.find((button) => button.classList.contains("active")) || tabButtons[0];
+        setActiveTab(activeButton.dataset.detailTab);
+    });
+}
+
+function bindEpisodePartDropdownV2() {
+    const dropdowns = Array.from(document.querySelectorAll(".episode-browser [data-episode-part-dropdown]"));
+    if (!dropdowns.length) return;
+
+    const closeSiblingDropdowns = (browser, exceptDropdown) => {
+        if (!browser) return;
+
+        browser.querySelectorAll("[data-episode-part-dropdown], [data-episode-server-dropdown]").forEach((dropdown) => {
+            if (dropdown !== exceptDropdown) {
+                const toggle = dropdown.querySelector(".episode-part-dropdown-toggle, .episode-server-dropdown-toggle");
+                const menu = dropdown.querySelector(".episode-part-dropdown-menu, .episode-server-dropdown-menu");
+                if (!toggle || !menu) return;
+                dropdown.classList.remove("is-open");
+                toggle.setAttribute("aria-expanded", "false");
+                menu.hidden = true;
+            }
+        });
+    };
+
+    const closeDropdown = (dropdown) => {
+        const toggle = dropdown.querySelector(".episode-part-dropdown-toggle");
+        const menu = dropdown.querySelector(".episode-part-dropdown-menu");
+        if (!toggle || !menu) return;
+        dropdown.classList.remove("is-open");
+        toggle.setAttribute("aria-expanded", "false");
+        menu.hidden = true;
+    };
+
+    const syncDropdown = (dropdown) => {
+        const browser = dropdown.closest(".episode-browser");
+        const label = dropdown.querySelector(".episode-part-dropdown-label");
+        const itemsContainer = dropdown.querySelector(".episode-part-dropdown-items");
+        if (!browser || !label || !itemsContainer) return;
+
+        const activeServer = browser.querySelector(".episode-server.active") || browser.querySelector(".episode-server");
+        if (!activeServer) return;
+
+        const currentPage = String(activeServer.dataset.activePage || "1");
+        label.textContent = `Phần ${currentPage}`;
+        itemsContainer.innerHTML = "";
+
+        const tabs = Array.from(activeServer.querySelectorAll(".episode-range-tab"));
+        if (!tabs.length) {
+            const fallback = document.createElement("button");
+            fallback.type = "button";
+            fallback.className = "episode-part-dropdown-item active";
+            fallback.textContent = "Phần 1";
+            fallback.addEventListener("click", (event) => event.preventDefault());
+            itemsContainer.appendChild(fallback);
+            return;
+        }
+
+        tabs.forEach((tab, index) => {
+            const page = String(tab.dataset.pageTarget || index + 1);
+            const item = document.createElement("button");
+            item.type = "button";
+            item.className = "episode-part-dropdown-item";
+            item.textContent = `Phần ${page}`;
+            item.classList.toggle("active", tab.classList.contains("active") || page === currentPage);
+            item.addEventListener("click", (event) => {
+                event.preventDefault();
+                tab.click();
+                closeDropdown(dropdown);
+            });
+            itemsContainer.appendChild(item);
+        });
+    };
+
+    dropdowns.forEach((dropdown) => {
+        const toggle = dropdown.querySelector(".episode-part-dropdown-toggle");
+        const menu = dropdown.querySelector(".episode-part-dropdown-menu");
+        const browser = dropdown.closest(".episode-browser");
+        if (!toggle || !menu || !browser) return;
+
+        toggle.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const willOpen = !dropdown.classList.contains("is-open");
+            closeSiblingDropdowns(browser, dropdown);
+
+            if (willOpen) {
+                syncDropdown(dropdown);
+                dropdown.classList.add("is-open");
+                toggle.setAttribute("aria-expanded", "true");
+                menu.hidden = false;
+            } else {
+                closeDropdown(dropdown);
+            }
+        });
+
+        browser.addEventListener("episode-browser-server-change", () => syncDropdown(dropdown));
+        browser.addEventListener("episode-page-change", () => syncDropdown(dropdown));
+        browser.querySelectorAll(".episode-server").forEach((serverBlock) => {
+            serverBlock.addEventListener("episode-page-change", () => syncDropdown(dropdown));
+        });
+
+        closeDropdown(dropdown);
+        syncDropdown(dropdown);
+    });
+
+    document.addEventListener("click", (event) => {
+        dropdowns.forEach((dropdown) => {
+            if (!dropdown.contains(event.target)) closeDropdown(dropdown);
+        });
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") dropdowns.forEach((dropdown) => closeDropdown(dropdown));
+    });
+}
 function bindEpisodeBrowser() {
     document.querySelectorAll(".episode-browser").forEach((browser) => {
         const tabButtons = browser.querySelectorAll(".episode-server-tab");
@@ -1518,6 +1821,8 @@ function bindEpisodeBrowser() {
             panels.forEach((panel) => {
                 panel.classList.toggle("active", panel.id === targetId);
             });
+
+            browser.dispatchEvent(new Event("episode-browser-server-change"));
         };
 
         tabButtons.forEach((button) => {
@@ -1529,6 +1834,119 @@ function bindEpisodeBrowser() {
         const activeButton = browser.querySelector(".episode-server-tab.active") || tabButtons[0];
         if (activeButton) {
             setActiveServer(activeButton.dataset.serverTarget);
+        }
+    });
+}
+
+function bindEpisodeServerDropdowns() {
+    const dropdowns = Array.from(document.querySelectorAll("[data-episode-server-dropdown]"));
+    if (!dropdowns.length) {
+        return;
+    }
+
+    const closeSiblingDropdowns = (browser, exceptDropdown) => {
+        if (!browser) return;
+
+        browser.querySelectorAll("[data-episode-part-dropdown], [data-episode-server-dropdown]").forEach((dropdown) => {
+            if (dropdown !== exceptDropdown) {
+                const toggle = dropdown.querySelector(".episode-part-dropdown-toggle, .episode-server-dropdown-toggle");
+                const menu = dropdown.querySelector(".episode-part-dropdown-menu, .episode-server-dropdown-menu");
+                if (!toggle || !menu) return;
+                dropdown.classList.remove("is-open");
+                toggle.setAttribute("aria-expanded", "false");
+                menu.hidden = true;
+            }
+        });
+    };
+
+    const closeDropdown = (dropdown) => {
+        const toggle = dropdown.querySelector(".episode-server-dropdown-toggle");
+        const menu = dropdown.querySelector(".episode-server-dropdown-menu");
+        if (!toggle || !menu) {
+            return;
+        }
+
+        dropdown.classList.remove("is-open");
+        toggle.setAttribute("aria-expanded", "false");
+        menu.hidden = true;
+    };
+
+    dropdowns.forEach((dropdown) => {
+        const browser = dropdown.closest(".episode-browser");
+        const toggle = dropdown.querySelector(".episode-server-dropdown-toggle");
+        const label = dropdown.querySelector(".episode-server-dropdown-label");
+        const menu = dropdown.querySelector(".episode-server-dropdown-menu");
+        const itemsContainer = dropdown.querySelector(".episode-server-dropdown-items");
+        if (!browser || !toggle || !label || !menu || !itemsContainer) {
+            return;
+        }
+
+        const syncDropdown = () => {
+            const tabs = Array.from(browser.querySelectorAll(".episode-server-tab"));
+            const activeTab = browser.querySelector(".episode-server-tab.active") || tabs[0];
+            if (!activeTab) {
+                label.textContent = "Server 1";
+                itemsContainer.innerHTML = "";
+                return;
+            }
+
+                label.textContent = (activeTab.textContent || "").trim() || "Server 1";
+                itemsContainer.innerHTML = "";
+
+            tabs.forEach((tab) => {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = "episode-server-dropdown-item";
+                item.textContent = (tab.textContent || "").trim();
+                item.classList.toggle("active", tab.classList.contains("active"));
+                item.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    tab.click();
+                    closeDropdown(dropdown);
+                });
+                itemsContainer.appendChild(item);
+            });
+        };
+
+        toggle.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const willOpen = !dropdown.classList.contains("is-open");
+            closeSiblingDropdowns(browser, dropdown);
+
+            if (willOpen) {
+                syncDropdown();
+                dropdown.classList.add("is-open");
+                toggle.setAttribute("aria-expanded", "true");
+                menu.hidden = false;
+            } else {
+                closeDropdown(dropdown);
+            }
+        });
+
+        browser.addEventListener("episode-browser-server-change", syncDropdown);
+        browser.addEventListener("click", (event) => {
+            if (!dropdown.contains(event.target)) {
+                closeDropdown(dropdown);
+            }
+        });
+
+        syncDropdown();
+        closeDropdown(dropdown);
+    });
+
+    document.addEventListener("click", (event) => {
+        dropdowns.forEach((dropdown) => {
+            if (!dropdown.contains(event.target)) {
+                closeDropdown(dropdown);
+            }
+        });
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            dropdowns.forEach((dropdown) => closeDropdown(dropdown));
         }
     });
 }
@@ -1795,21 +2213,38 @@ function bindBackToTop() {
     window.addEventListener("resize", syncBackToTop);
 }
 
+function runInitSafely(name, initFn) {
+    try {
+        const result = initFn();
+        if (result && typeof result.then === "function") {
+            result.catch((error) => {
+                console.error(`Init failed: ${name}`, error);
+            });
+        }
+    } catch (error) {
+        console.error(`Init failed: ${name}`, error);
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-    bindSearchEvents();
-    bindLiveSearch();
-    bindCategoryLinks();
-    bindCategoryPagination();
-    bindEpisodePagination();
-    bindEpisodeBrowser();
-    bindMobileNavbar();
-    bindMobileDetailInfoToggle();
-    bindDesktopNavbarDropdown();
-    bindNavbarScrollState();
-    bindBackToTop();
-    bindMovieHoverPopup();
-    bindDetailFavoriteButton();
-    bindFavoritePageActions();
-    loadHeroSlider();
-    initHomeSections();
+    runInitSafely("bindSearchEvents", bindSearchEvents);
+    runInitSafely("bindLiveSearch", bindLiveSearch);
+    runInitSafely("bindCategoryLinks", bindCategoryLinks);
+    runInitSafely("bindCategoryPagination", bindCategoryPagination);
+    runInitSafely("bindDetailContentTabs", bindDetailContentTabs);
+    runInitSafely("bindEpisodePagination", bindEpisodePagination);
+    runInitSafely("bindEpisodePartDropdownV2", bindEpisodePartDropdownV2);
+    runInitSafely("bindEpisodeBrowser", bindEpisodeBrowser);
+    runInitSafely("bindEpisodeServerDropdowns", bindEpisodeServerDropdowns);
+    runInitSafely("bindMobileNavbar", bindMobileNavbar);
+    runInitSafely("bindMobileDetailInfoToggle", bindMobileDetailInfoToggle);
+    runInitSafely("bindDesktopNavbarDropdown", bindDesktopNavbarDropdown);
+    runInitSafely("bindNavbarScrollState", bindNavbarScrollState);
+    runInitSafely("bindBackToTop", bindBackToTop);
+    runInitSafely("bindMovieHoverPopup", bindMovieHoverPopup);
+    runInitSafely("bindDetailFavoriteButton", bindDetailFavoriteButton);
+    runInitSafely("bindFavoritePageActions", bindFavoritePageActions);
+    runInitSafely("loadHeroSlider", loadHeroSlider);
+    runInitSafely("initHomeSections", initHomeSections);
 });
+

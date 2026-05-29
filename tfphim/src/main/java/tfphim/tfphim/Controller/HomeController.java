@@ -20,17 +20,17 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.text.NumberFormat;
 
 import tfphim.tfphim.Services.MovieApiService;
 
 @Controller
 public class HomeController {
     private static final Logger log = LoggerFactory.getLogger(HomeController.class);
-    private static final int EPISODES_PER_PAGE = 50;
-    private static final int MOVIES_PER_PAGE = 36;
-    private static final int API_MOVIES_PER_PAGE = 10;
+    private static final int EPISODES_PER_PAGE = 100;
     private static final Map<String, Map<String, String>> CATEGORY_METADATA = Map.of(
             "phim-bo", Map.of(
                     "title", "Phim Bộ",
@@ -79,15 +79,22 @@ public class HomeController {
         }
 
         int safePage = Math.max(page, 1);
-        Map<String, Object> metadataPayload = movieApiService.getMoviesData(type, 1);
-        Map<String, Object> paginate = safeMap(metadataPayload.get("paginate"));
-        int totalItems = extractNonNegativeInt(paginate.get("total_items"), 0);
-        int totalPages = Math.max(calculateTotalPages(totalItems, MOVIES_PER_PAGE), 1);
+        Map<String, Object> pagePayload = ensureMetadataPayload(
+                movieApiService.getMoviesData(type, safePage),
+                () -> movieApiService.getMoviesData(type, safePage)
+        );
+        int totalItems = resolveTotalItems(pagePayload);
+        int totalPages = Math.max(resolveTotalPages(pagePayload, totalItems), 1);
         int currentPage = Math.min(safePage, totalPages);
-        List<Map<String, Object>> movies = fetchMoviesForLocalPage(type, currentPage, metadataPayload);
+        if (currentPage != safePage) {
+            pagePayload = ensureMetadataPayload(
+                    movieApiService.getMoviesData(type, currentPage),
+                    () -> movieApiService.getMoviesData(type, currentPage)
+            );
+        }
+        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
 
-        Map<String, Object> cat = safeMap(metadataPayload.get("cat"));
-        String categoryTitle = String.valueOf(cat.getOrDefault("title", cat.getOrDefault("name", categoryMeta.getOrDefault("title", type))));
+        String categoryTitle = resolveListingTitle(pagePayload, categoryMeta.getOrDefault("title", type));
         String categoryDescription = categoryMeta.getOrDefault("description", "Danh sách phim được lấy theo định dạng từ API.");
 
         model.addAttribute("pageTitle", categoryTitle);
@@ -99,6 +106,7 @@ public class HomeController {
         model.addAttribute("currentPage", currentPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalItems", totalItems);
+        model.addAttribute("totalItemsText", formatCount(totalItems));
         model.addAttribute("hasPrevious", currentPage > 1);
         model.addAttribute("hasNext", currentPage < totalPages);
         model.addAttribute("paginationItems", buildPaginationItems(currentPage, totalPages));
@@ -119,6 +127,7 @@ public class HomeController {
         if (normalizedKeyword.isBlank()) {
             model.addAttribute("movies", Collections.emptyList());
             model.addAttribute("totalItems", 0);
+            model.addAttribute("totalItemsText", "0");
             model.addAttribute("currentPage", 1);
             model.addAttribute("totalPages", 1);
             model.addAttribute("hasPrevious", false);
@@ -128,15 +137,24 @@ public class HomeController {
         }
 
         int safePage = Math.max(page, 1);
-        Map<String, Object> firstPayload = movieApiService.searchMoviesData(normalizedKeyword, 1);
-        Map<String, Object> paginate = safeMap(firstPayload.get("paginate"));
-        int totalItems = extractNonNegativeInt(paginate.get("total_items"), 0);
-        int totalPages = Math.max(calculateTotalPages(totalItems, MOVIES_PER_PAGE), 1);
+        Map<String, Object> pagePayload = ensureMetadataPayload(
+                movieApiService.searchMoviesData(normalizedKeyword, safePage),
+                () -> movieApiService.searchMoviesData(normalizedKeyword, safePage)
+        );
+        int totalItems = resolveTotalItems(pagePayload);
+        int totalPages = Math.max(resolveTotalPages(pagePayload, totalItems), 1);
         int currentPage = Math.min(safePage, totalPages);
-        List<Map<String, Object>> movies = fetchSearchMoviesForLocalPage(normalizedKeyword, currentPage, firstPayload);
+        if (currentPage != safePage) {
+            pagePayload = ensureMetadataPayload(
+                    movieApiService.searchMoviesData(normalizedKeyword, currentPage),
+                    () -> movieApiService.searchMoviesData(normalizedKeyword, currentPage)
+            );
+        }
+        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
 
         model.addAttribute("movies", movies);
         model.addAttribute("totalItems", totalItems);
+        model.addAttribute("totalItemsText", formatCount(totalItems));
         model.addAttribute("currentPage", currentPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("hasPrevious", currentPage > 1);
@@ -159,14 +177,21 @@ public class HomeController {
             Model model
     ) {
         int safePage = Math.max(page, 1);
-        Map<String, Object> metadataPayload = movieApiService.getMoviesByCountryData(slug, 1);
-        Map<String, Object> paginate = safeMap(metadataPayload.get("paginate"));
-        Map<String, Object> cat = safeMap(metadataPayload.get("cat"));
-        int totalItems = extractNonNegativeInt(paginate.get("total_items"), 0);
-        int totalPages = Math.max(calculateTotalPages(totalItems, MOVIES_PER_PAGE), 1);
+        Map<String, Object> pagePayload = ensureMetadataPayload(
+                movieApiService.getMoviesByCountryData(slug, safePage),
+                () -> movieApiService.getMoviesByCountryData(slug, safePage)
+        );
+        int totalItems = resolveTotalItems(pagePayload);
+        int totalPages = Math.max(resolveTotalPages(pagePayload, totalItems), 1);
         int currentPage = Math.min(safePage, totalPages);
-        List<Map<String, Object>> movies = fetchCountryMoviesForLocalPage(slug, currentPage, metadataPayload);
-        String countryTitle = String.valueOf(cat.getOrDefault("title", cat.getOrDefault("name", slug)));
+        if (currentPage != safePage) {
+            pagePayload = ensureMetadataPayload(
+                    movieApiService.getMoviesByCountryData(slug, currentPage),
+                    () -> movieApiService.getMoviesByCountryData(slug, currentPage)
+            );
+        }
+        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        String countryTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", countryTitle);
         model.addAttribute("countrySlug", slug);
@@ -178,6 +203,7 @@ public class HomeController {
         model.addAttribute("currentPage", currentPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalItems", totalItems);
+        model.addAttribute("totalItemsText", formatCount(totalItems));
         model.addAttribute("hasPrevious", currentPage > 1);
         model.addAttribute("hasNext", currentPage < totalPages);
         model.addAttribute("paginationBasePath", "/quoc-gia/" + slug);
@@ -189,16 +215,23 @@ public class HomeController {
             @PathVariable String slug,
             @RequestParam(defaultValue = "1") int page,
             Model model
-    ) {
+    ) {    
         int safePage = Math.max(page, 1);
-        Map<String, Object> metadataPayload = movieApiService.getMoviesByGenreData(slug, 1);
-        Map<String, Object> paginate = safeMap(metadataPayload.get("paginate"));
-        Map<String, Object> cat = safeMap(metadataPayload.get("cat"));
-        int totalItems = extractNonNegativeInt(paginate.get("total_items"), 0);
-        int totalPages = Math.max(calculateTotalPages(totalItems, MOVIES_PER_PAGE), 1);
+        Map<String, Object> pagePayload = ensureMetadataPayload(
+                movieApiService.getMoviesByGenreData(slug, safePage),
+                () -> movieApiService.getMoviesByGenreData(slug, safePage)
+        );
+        int totalItems = resolveTotalItems(pagePayload);
+        int totalPages = Math.max(resolveTotalPages(pagePayload, totalItems), 1);
         int currentPage = Math.min(safePage, totalPages);
-        List<Map<String, Object>> movies = fetchGenreMoviesForLocalPage(slug, currentPage, metadataPayload);
-        String genreTitle = String.valueOf(cat.getOrDefault("title", cat.getOrDefault("name", slug)));
+        if (currentPage != safePage) {
+            pagePayload = ensureMetadataPayload(
+                    movieApiService.getMoviesByGenreData(slug, currentPage),
+                    () -> movieApiService.getMoviesByGenreData(slug, currentPage)
+            );
+        }
+        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        String genreTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", genreTitle);
         model.addAttribute("genreSlug", slug);
@@ -210,6 +243,7 @@ public class HomeController {
         model.addAttribute("currentPage", currentPage);
         model.addAttribute("totalPages", totalPages);
         model.addAttribute("totalItems", totalItems);
+        model.addAttribute("totalItemsText", formatCount(totalItems));
         model.addAttribute("hasPrevious", currentPage > 1);
         model.addAttribute("hasNext", currentPage < totalPages);
         model.addAttribute("paginationBasePath", "/the-loai/" + slug);
@@ -221,7 +255,11 @@ public class HomeController {
         try {
             Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
             Map<String, Object> movie = extractMovieDetail(payload);
-            List<Map<String, Object>> episodes = extractEpisodeServers(movie);
+            List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
+            int totalEpisodes = extractNonNegativeInt(movie.get("total_episodes"), 0);
+            int airedEpisodes = resolveAiredEpisodes(movie, episodes);
+            boolean showServerCards = !episodes.isEmpty()
+                    && episodes.stream().allMatch(server -> safeList(server.get("items")).size() <= 1);
 
             if (movie.isEmpty()) {
                 model.addAttribute("pageTitle", "Không tìm thấy phim");
@@ -232,9 +270,20 @@ public class HomeController {
             model.addAttribute("pageTitle", movie.getOrDefault("name", "Chi tiết phim"));
             model.addAttribute("movie", movie);
             model.addAttribute("categories", extractCategories(movie));
+            model.addAttribute("actors", extractActors(movie));
             model.addAttribute("languageBadges", extractLanguageBadges(movie));
             model.addAttribute("releaseYear", findCategoryValue(movie, "Năm"));
+            model.addAttribute("movieDuration", resolveMovieField(movie, "time", "runtime", "duration"));
+            model.addAttribute("movieCountry", resolveMovieField(movie, "country", "countries"));
+            model.addAttribute("movieDirector", resolveMovieField(movie, "director", "directors"));
+            model.addAttribute("isTrailerMovie", isTrailerMovie(movie));
             model.addAttribute("episodes", episodes);
+            model.addAttribute("showServerCards", showServerCards);
+            model.addAttribute("detailServerCards", buildDetailServerCards(
+                    episodes,
+                    String.valueOf(movie.getOrDefault("slug", slug)),
+                    String.valueOf(movie.getOrDefault("name", ""))
+            ));
             model.addAttribute("pagedEpisodes", paginateEpisodesForView(
                     episodes,
                     null,
@@ -263,8 +312,10 @@ public class HomeController {
         try {
             Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
             Map<String, Object> movie = extractMovieDetail(payload);
-            List<Map<String, Object>> episodes = extractEpisodeServers(movie);
+            List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
             Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
+            boolean showServerCards = !episodes.isEmpty()
+                    && episodes.stream().allMatch(serverItem -> safeList(serverItem.get("items")).size() <= 1);
 
             if (movie.isEmpty()) {
                 model.addAttribute("pageTitle", "Không xem được phim");
@@ -282,6 +333,12 @@ public class HomeController {
             model.addAttribute("pageTitle", movie.getOrDefault("name", "Xem phim"));
             model.addAttribute("movie", movie);
             model.addAttribute("episodes", episodes);
+            model.addAttribute("showServerCards", showServerCards);
+            model.addAttribute("detailServerCards", buildDetailServerCards(
+                    episodes,
+                    String.valueOf(movie.getOrDefault("slug", slug)),
+                    String.valueOf(movie.getOrDefault("name", ""))
+            ));
             model.addAttribute("pagedEpisodes", paginateEpisodesForView(
                     episodes,
                     String.valueOf(selectedEpisode.getOrDefault("server_name", "")),
@@ -291,7 +348,8 @@ public class HomeController {
             model.addAttribute("selectedEpisode", selectedEpisode);
             model.addAttribute("languageBadges", extractLanguageBadges(movie));
             model.addAttribute("categories", extractCategories(movie));
-            model.addAttribute("releaseYear", findCategoryValue(movie, "NÄƒm"));
+            model.addAttribute("actors", extractActors(movie));
+            model.addAttribute("releaseYear", findCategoryValue(movie, "Năm"));
             model.addAttribute("selectedServer", String.valueOf(selectedEpisode.getOrDefault("server_name", "")));
             model.addAttribute("selectedServerLabel", buildServerDisplayLabel(
                     String.valueOf(selectedEpisode.getOrDefault("server_name", "")),
@@ -326,7 +384,7 @@ public class HomeController {
     ) {
         Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
         Map<String, Object> movie = extractMovieDetail(payload);
-        List<Map<String, Object>> episodes = extractEpisodeServers(movie);
+        List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
         Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
         String m3u8 = String.valueOf(selectedEpisode.getOrDefault("m3u8", ""));
 
@@ -429,7 +487,27 @@ public class HomeController {
 
     private List<Map<String, Object>> extractCategories(Map<String, Object> movie) {
         List<Map<String, Object>> result = new ArrayList<>();
-        Map<String, Object> categoryGroups = safeMap(movie.get("category"));
+        Object rawCategories = movie.get("category");
+        List<Map<String, Object>> flatCategories = safeList(rawCategories);
+        if (flatCategories.isEmpty()) {
+            flatCategories = safeList(movie.get("categories"));
+        }
+
+        for (Map<String, Object> item : flatCategories) {
+            String name = String.valueOf(item.getOrDefault("name", "")).trim();
+            if (!name.isBlank()) {
+                result.add(Map.of(
+                        "group", "Thể loại",
+                        "name", name
+                ));
+            }
+        }
+
+        if (!result.isEmpty()) {
+            return result;
+        }
+
+        Map<String, Object> categoryGroups = safeMap(rawCategories);
 
         for (Object groupValue : categoryGroups.values()) {
             Map<String, Object> group = safeMap(groupValue);
@@ -437,10 +515,13 @@ public class HomeController {
             String groupName = String.valueOf(groupInfo.getOrDefault("name", ""));
 
             for (Map<String, Object> item : safeList(group.get("list"))) {
-                result.add(Map.of(
-                        "group", groupName,
-                        "name", String.valueOf(item.getOrDefault("name", ""))
-                ));
+                String name = String.valueOf(item.getOrDefault("name", "")).trim();
+                if (!name.isBlank()) {
+                    result.add(Map.of(
+                            "group", groupName,
+                            "name", name
+                    ));
+                }
             }
         }
         return result;
@@ -453,6 +534,149 @@ public class HomeController {
             }
         }
         return "N/A";
+    }
+
+    private List<Map<String, Object>> extractActors(Map<String, Object> movie) {
+        Object rawActors = movie.getOrDefault("actor", movie.get("actors"));
+        List<Map<String, Object>> actors = new ArrayList<>();
+        LinkedHashSet<String> seenNames = new LinkedHashSet<>();
+
+        if (rawActors instanceof CharSequence sequence) {
+            for (String name : sequence.toString().split(",")) {
+                addActor(actors, seenNames, name, "");
+            }
+            return actors;
+        }
+
+        if (rawActors instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                if (item instanceof Map<?, ?>) {
+                    Map<String, Object> actorMap = safeMap(item);
+                    String name = normalizeMovieTextValue(actorMap.get("name"));
+                    if (name.isBlank()) {
+                        name = normalizeMovieTextValue(actorMap.get("title"));
+                    }
+                    if (name.isBlank()) {
+                        name = normalizeMovieTextValue(actorMap.get("value"));
+                    }
+                    if (name.isBlank()) {
+                        name = normalizeMovieTextValue(actorMap.get("actor"));
+                    }
+                    if (name.isBlank()) {
+                        name = normalizeMovieTextValue(actorMap.get("actor_name"));
+                    }
+                    String image = normalizeMovieImageUrl(String.valueOf(
+                            actorMap.getOrDefault("avatar", actorMap.getOrDefault("image", actorMap.getOrDefault("profile_path", "")))
+                    ));
+                    addActor(actors, seenNames, name, image);
+                } else {
+                    addActor(actors, seenNames, normalizeMovieTextValue(item), "");
+                }
+            }
+            return actors;
+        }
+
+        if (rawActors != null && rawActors.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(rawActors);
+            for (int i = 0; i < length; i++) {
+                addActor(actors, seenNames, normalizeMovieTextValue(java.lang.reflect.Array.get(rawActors, i)), "");
+            }
+            return actors;
+        }
+
+        addActor(actors, seenNames, normalizeMovieTextValue(rawActors), "");
+        return actors;
+    }
+
+    private void addActor(List<Map<String, Object>> actors, LinkedHashSet<String> seenNames, String rawName, String imageUrl) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isBlank() || !seenNames.add(name.toLowerCase(Locale.ROOT))) {
+            return;
+        }
+
+        actors.add(Map.of(
+                "name", name,
+                "image_url", imageUrl == null ? "" : imageUrl
+        ));
+    }
+
+    private String resolveMovieField(Map<String, Object> movie, String primaryKey, String... fallbackKeys) {
+        String value = normalizeMovieTextValue(movie.get(primaryKey));
+        if (!value.isBlank()) {
+            return value;
+        }
+
+        for (String key : fallbackKeys) {
+            value = normalizeMovieTextValue(movie.get(key));
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+
+        return "Đang cập nhật";
+    }
+
+    private String normalizeMovieTextValue(Object value) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value instanceof CharSequence sequence) {
+            return sequence.toString().trim();
+        }
+
+        if (value instanceof Map<?, ?> map) {
+            for (String key : List.of("name", "title", "value")) {
+                Object nested = map.get(key);
+                String text = normalizeMovieTextValue(nested);
+                if (!text.isBlank()) {
+                    return text;
+                }
+            }
+
+            List<String> parts = new ArrayList<>();
+            for (Object entryValue : map.values()) {
+                String text = normalizeMovieTextValue(entryValue);
+                if (!text.isBlank()) {
+                    parts.add(text);
+                }
+            }
+            return String.join(", ", parts).trim();
+        }
+
+        if (value instanceof Iterable<?> iterable) {
+            List<String> parts = new ArrayList<>();
+            for (Object item : iterable) {
+                String text = normalizeMovieTextValue(item);
+                if (!text.isBlank()) {
+                    parts.add(text);
+                }
+            }
+            return String.join(", ", parts).trim();
+        }
+
+        if (value.getClass().isArray()) {
+            List<String> parts = new ArrayList<>();
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                String text = normalizeMovieTextValue(java.lang.reflect.Array.get(value, i));
+                if (!text.isBlank()) {
+                    parts.add(text);
+                }
+            }
+            return String.join(", ", parts).trim();
+        }
+
+        return String.valueOf(value).trim();
+    }
+
+    private boolean isTrailerMovie(Map<String, Object> movie) {
+        String currentEpisode = normalizeMovieTextValue(movie.get("current_episode"));
+        if (currentEpisode.isBlank()) {
+            currentEpisode = normalizeMovieTextValue(movie.get("episode_current"));
+        }
+
+        return normalizeLanguageText(currentEpisode).toLowerCase().contains("trailer");
     }
 
     private List<String> extractLanguageBadges(Map<String, Object> movie) {
@@ -511,18 +735,18 @@ public class HomeController {
     private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload) {
         Object items = payload.get("items");
         if (items instanceof List<?>) {
-            return safeList(items);
+            return normalizeMovieListItems(safeList(items));
         }
 
         Map<String, Object> data = safeMap(payload.get("data"));
         Object dataItems = data.get("items");
         if (dataItems instanceof List<?>) {
-            return safeList(dataItems);
+            return normalizeMovieListItems(safeList(dataItems));
         }
 
         Object rawData = payload.get("data");
         if (rawData instanceof List<?>) {
-            return safeList(rawData);
+            return normalizeMovieListItems(safeList(rawData));
         }
 
         return Collections.emptyList();
@@ -531,30 +755,150 @@ public class HomeController {
     private Map<String, Object> extractMovieDetail(Map<String, Object> payload) {
         Map<String, Object> movie = safeMap(payload.get("movie"));
         if (!movie.isEmpty()) {
-            return movie;
+            return normalizeMovieDetail(movie);
         }
 
         Map<String, Object> data = safeMap(payload.get("data"));
         movie = safeMap(data.get("movie"));
         if (!movie.isEmpty()) {
-            return movie;
+            return normalizeMovieDetail(movie);
         }
 
         if (!data.isEmpty()) {
-            return data;
+            return normalizeMovieDetail(data);
         }
 
         return Collections.emptyMap();
     }
 
-    private List<Map<String, Object>> extractEpisodeServers(Map<String, Object> movie) {
+    private List<Map<String, Object>> extractEpisodeServers(Map<String, Object> movie, Map<String, Object> payload) {
         List<Map<String, Object>> episodes = safeList(movie.get("episodes"));
+        if (!episodes.isEmpty()) {
+            return episodes;
+        }
+
+        episodes = adaptKkPhimEpisodes(safeList(payload.get("episodes")));
         if (!episodes.isEmpty()) {
             return episodes;
         }
 
         Map<String, Object> data = safeMap(movie.get("data"));
         return safeList(data.get("episodes"));
+    }
+
+    private Map<String, Object> normalizeMovieDetail(Map<String, Object> movie) {
+        Map<String, Object> normalized = new HashMap<>(movie);
+        if (!normalized.containsKey("language") && normalized.containsKey("lang")) {
+            normalized.put("language", normalized.get("lang"));
+        }
+        if (!normalized.containsKey("current_episode") && normalized.containsKey("episode_current")) {
+            normalized.put("current_episode", normalized.get("episode_current"));
+        }
+        if (!normalized.containsKey("total_episodes") && normalized.containsKey("episode_total")) {
+            normalized.put("total_episodes", normalized.get("episode_total"));
+        }
+        if (!normalized.containsKey("original_name") && normalized.containsKey("origin_name")) {
+            normalized.put("original_name", normalized.get("origin_name"));
+        }
+        normalized.put("poster_url", normalizeMovieImageUrl(String.valueOf(normalized.getOrDefault("poster_url", ""))));
+        normalized.put("thumb_url", normalizeMovieImageUrl(String.valueOf(normalized.getOrDefault("thumb_url", ""))));
+        normalized.put("tmdb_vote_average", resolveMovieRating(normalized));
+        return normalized;
+    }
+
+    private List<Map<String, Object>> normalizeMovieListItems(List<Map<String, Object>> items) {
+        if (items.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Map<String, Object> item : items) {
+            Map<String, Object> mapped = new HashMap<>(item);
+            if (!mapped.containsKey("language") && mapped.containsKey("lang")) {
+                mapped.put("language", mapped.get("lang"));
+            }
+            mapped.put("poster_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("poster_url", ""))));
+            mapped.put("thumb_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("thumb_url", ""))));
+            mapped.put("tmdb_vote_average", resolveMovieRating(mapped));
+            normalized.add(mapped);
+        }
+        return normalized;
+    }
+
+    private String resolveMovieRating(Map<String, Object> movie) {
+        Object directRating = movie.get("tmdb_vote_average");
+        if (directRating != null && !String.valueOf(directRating).isBlank()) {
+            return String.valueOf(directRating);
+        }
+
+        Map<String, Object> tmdb = safeMap(movie.get("tmdb"));
+        Object tmdbRating = tmdb.get("vote_average");
+        if (tmdbRating != null && !String.valueOf(tmdbRating).isBlank()) {
+            return String.valueOf(tmdbRating);
+        }
+
+        Map<String, Object> imdb = safeMap(movie.get("imdb"));
+        Object imdbRating = imdb.get("vote_average");
+        if (imdbRating != null && !String.valueOf(imdbRating).isBlank()) {
+            return String.valueOf(imdbRating);
+        }
+
+        Object rating = movie.get("rating");
+        return rating == null ? "" : String.valueOf(rating);
+    }
+
+    private String normalizeMovieImageUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return "";
+        }
+
+        String trimmed = url.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("//")) {
+            return "https:" + trimmed;
+        }
+
+        String normalizedPath = trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
+        if (normalizedPath.startsWith("upload/")) {
+            return "https://img.phimapi.com/" + normalizedPath;
+        }
+
+        return trimmed;
+    }
+
+    private List<Map<String, Object>> adaptKkPhimEpisodes(List<Map<String, Object>> rawServers) {
+        if (rawServers.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> adapted = new ArrayList<>();
+        for (Map<String, Object> server : rawServers) {
+            String serverName = String.valueOf(server.getOrDefault("server_name", ""));
+            List<Map<String, Object>> serverData = safeList(server.get("server_data"));
+            if (serverData.isEmpty()) {
+                continue;
+            }
+
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (Map<String, Object> item : serverData) {
+                Map<String, Object> normalizedItem = new HashMap<>(item);
+                if (!normalizedItem.containsKey("m3u8") && normalizedItem.containsKey("link_m3u8")) {
+                    normalizedItem.put("m3u8", normalizedItem.get("link_m3u8"));
+                }
+                if (!normalizedItem.containsKey("embed") && normalizedItem.containsKey("link_embed")) {
+                    normalizedItem.put("embed", normalizedItem.get("link_embed"));
+                }
+                items.add(normalizedItem);
+            }
+
+            adapted.add(Map.of(
+                    "server_name", serverName,
+                    "items", items
+            ));
+        }
+        return adapted;
     }
 
     private void applyEpisodeProgressAttributes(Model model, Map<String, Object> movie, List<Map<String, Object>> episodes) {
@@ -668,7 +1012,7 @@ public class HomeController {
             }
         }
 
-        return Math.max(fallback, 1);
+        return fallback;
     }
 
     private int extractNonNegativeInt(Object value, int fallback) {
@@ -683,65 +1027,114 @@ public class HomeController {
             }
         }
 
-        return Math.max(fallback, 0);
+        return fallback;
     }
 
-    private int calculateTotalPages(int totalItems, int pageSize) {
-        if (totalItems <= 0 || pageSize <= 0) {
-            return 0;
+    private int resolveTotalItems(Map<String, Object> payload) {
+        Map<String, Object> paginate = safeMap(payload.get("paginate"));
+        int totalItems = extractNonNegativeInt(paginate.get("total_items"), -1);
+        if (totalItems >= 0) {
+            return totalItems;
         }
 
-        return (int) Math.ceil((double) totalItems / pageSize);
+        Map<String, Object> paginationRoot = safeMap(payload.get("pagination"));
+        totalItems = extractNonNegativeInt(
+                paginationRoot.getOrDefault("totalItems", paginationRoot.get("total_items")),
+                -1
+        );
+        if (totalItems >= 0) {
+            return totalItems;
+        }
+
+        Map<String, Object> data = safeMap(payload.get("data"));
+        Map<String, Object> params = safeMap(data.get("params"));
+        Map<String, Object> pagination = safeMap(params.get("pagination"));
+        totalItems = extractNonNegativeInt(pagination.get("totalItems"), -1);
+        if (totalItems >= 0) {
+            return totalItems;
+        }
+
+        return extractMovieItems(payload).size();
     }
 
-    private List<Map<String, Object>> fetchMoviesForLocalPage(String type, int localPage, Map<String, Object> firstPayload) {
-        return fetchLocalPageItems(localPage, firstPayload, apiPage -> movieApiService.getMoviesData(type, apiPage));
-    }
-
-    private List<Map<String, Object>> fetchSearchMoviesForLocalPage(String keyword, int localPage, Map<String, Object> firstPayload) {
-        return fetchLocalPageItems(localPage, firstPayload, apiPage -> movieApiService.searchMoviesData(keyword, apiPage));
-    }
-
-    private List<Map<String, Object>> fetchCountryMoviesForLocalPage(String countrySlug, int localPage, Map<String, Object> firstPayload) {
-        return fetchLocalPageItems(localPage, firstPayload, apiPage -> movieApiService.getMoviesByCountryData(countrySlug, apiPage));
-    }
-
-    private List<Map<String, Object>> fetchGenreMoviesForLocalPage(String genreSlug, int localPage, Map<String, Object> firstPayload) {
-        return fetchLocalPageItems(localPage, firstPayload, apiPage -> movieApiService.getMoviesByGenreData(genreSlug, apiPage));
-    }
-
-    private List<Map<String, Object>> fetchLocalPageItems(
-            int localPage,
-            Map<String, Object> firstPayload,
-            java.util.function.IntFunction<Map<String, Object>> pageFetcher
+    private Map<String, Object> ensureMetadataPayload(
+            Map<String, Object> payload,
+            java.util.function.Supplier<Map<String, Object>> refresher
     ) {
-        if (localPage < 1) {
-            return Collections.emptyList();
-        }
-
-        int startIndex = (localPage - 1) * MOVIES_PER_PAGE;
-        int endIndex = startIndex + MOVIES_PER_PAGE - 1;
-        int startApiPage = (startIndex / API_MOVIES_PER_PAGE) + 1;
-        int endApiPage = (endIndex / API_MOVIES_PER_PAGE) + 1;
-        int startOffset = startIndex % API_MOVIES_PER_PAGE;
-        List<Map<String, Object>> combinedItems = new ArrayList<>();
-
-        for (int apiPage = startApiPage; apiPage <= endApiPage; apiPage++) {
-            Map<String, Object> payload;
-            if (apiPage == 1 && firstPayload != null && !firstPayload.isEmpty()) {
-                payload = firstPayload;
-            } else {
-                payload = pageFetcher.apply(apiPage);
+        if (payload != null && !payload.isEmpty()) {
+            int totalItems = resolveTotalItems(payload);
+            if (totalItems > 0 || !extractMovieItems(payload).isEmpty()) {
+                return payload;
             }
-            combinedItems.addAll(extractMovieItems(payload));
         }
 
-        if (combinedItems.isEmpty() || startOffset >= combinedItems.size()) {
-            return Collections.emptyList();
+        try {
+            Map<String, Object> refreshed = refresher.get();
+            return refreshed != null ? refreshed : Collections.emptyMap();
+        } catch (Exception ignored) {
+            return payload != null ? payload : Collections.emptyMap();
+        }
+    }
+
+    private int resolveTotalPages(Map<String, Object> payload, int totalItems) {
+        Map<String, Object> paginationRoot = safeMap(payload.get("pagination"));
+        int totalPages = extractPositiveInt(
+                paginationRoot.getOrDefault("totalPages", paginationRoot.get("total_pages")),
+                -1
+        );
+        if (totalPages > 0) {
+            return totalPages;
         }
 
-        int toIndex = Math.min(startOffset + MOVIES_PER_PAGE, combinedItems.size());
-        return new ArrayList<>(combinedItems.subList(startOffset, toIndex));
+        Map<String, Object> data = safeMap(payload.get("data"));
+        Map<String, Object> params = safeMap(data.get("params"));
+        Map<String, Object> pagination = safeMap(params.get("pagination"));
+        totalPages = extractPositiveInt(
+                pagination.getOrDefault("totalPages", pagination.get("total_pages")),
+                -1
+        );
+        if (totalPages > 0) {
+            return totalPages;
+        }
+
+        int perPage = extractPositiveInt(
+                pagination.getOrDefault("totalItemsPerPage", pagination.get("itemsPerPage")),
+                extractMovieItems(payload).size()
+        );
+        if (totalItems > 0 && perPage > 0) {
+            return (int) Math.ceil((double) totalItems / perPage);
+        }
+
+        return extractMovieItems(payload).isEmpty() ? 1 : 1;
+    }
+
+    private String formatCount(int value) {
+        return NumberFormat.getIntegerInstance(Locale.US).format(Math.max(value, 0));
+    }
+
+    private String resolveListingTitle(Map<String, Object> payload, String fallback) {
+        Map<String, Object> cat = safeMap(payload.get("cat"));
+        String fromCat = String.valueOf(cat.getOrDefault("title", cat.getOrDefault("name", ""))).trim();
+        if (!fromCat.isBlank()) {
+            return fromCat;
+        }
+
+        Map<String, Object> data = safeMap(payload.get("data"));
+        String titlePage = String.valueOf(data.getOrDefault("titlePage", "")).trim();
+        if (!titlePage.isBlank()) {
+            return titlePage;
+        }
+
+        List<Map<String, Object>> breadcrumb = safeList(data.get("breadCrumb"));
+        if (!breadcrumb.isEmpty()) {
+            Map<String, Object> last = breadcrumb.get(breadcrumb.size() - 1);
+            String breadcrumbName = String.valueOf(last.getOrDefault("name", "")).trim();
+            if (!breadcrumbName.isBlank()) {
+                return breadcrumbName;
+            }
+        }
+
+        return fallback;
     }
 
     private List<Map<String, Object>> buildPaginationItems(int currentPage, int totalPages) {
@@ -793,6 +1186,37 @@ public class HomeController {
             }
         }
         return Collections.emptyMap();
+    }
+
+    private List<Map<String, Object>> buildDetailServerCards(List<Map<String, Object>> episodes, String slug, String movieName) {
+        if (episodes.isEmpty() || slug == null || slug.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> cards = new ArrayList<>();
+        int index = 1;
+
+        for (Map<String, Object> server : episodes) {
+            String serverName = String.valueOf(server.getOrDefault("server_name", ""));
+            List<Map<String, Object>> items = safeList(server.get("items"));
+            if (items.isEmpty()) {
+                continue;
+            }
+
+            Map<String, Object> first = new HashMap<>(items.get(0));
+            first.put("server_name", serverName);
+            String serverLabel = resolveServerCardLabel(serverName);
+            first.put("server_label", serverLabel);
+            first.put("card_title", movieName == null || movieName.isBlank() ? serverLabel : movieName);
+            first.put("card_subtitle", serverLabel + " #" + index);
+            first.put("card_tone", resolveServerCardTone(serverName, serverLabel));
+            first.put("card_icon", resolveServerCardIcon(serverName, serverLabel));
+            first.put("watch_url", buildWatchUrl(slug, first));
+            cards.add(first);
+            index++;
+        }
+
+        return cards;
     }
 
     private Map<String, Object> findSelectedEpisode(List<Map<String, Object>> episodes, String targetServer, String targetTap) {
@@ -849,8 +1273,8 @@ public class HomeController {
                     activePage = pageNumber;
                 }
 
-                String startName = String.valueOf(pageItems.get(0).getOrDefault("name", start + 1));
-                String endName = String.valueOf(pageItems.get(pageItems.size() - 1).getOrDefault("name", end));
+                String startName = normalizeEpisodeRangeName(pageItems.get(0).getOrDefault("name", start + 1));
+                String endName = normalizeEpisodeRangeName(pageItems.get(pageItems.size() - 1).getOrDefault("name", end));
                 pages.add(Map.of(
                         "pageNumber", pageNumber,
                         "label", startName + " - " + endName,
@@ -868,6 +1292,23 @@ public class HomeController {
         }
 
         return pagedServers;
+    }
+
+    private String normalizeEpisodeRangeName(Object value) {
+        String name = String.valueOf(value == null ? "" : value).trim();
+        if (name.isBlank()) {
+            return "";
+        }
+
+        String lowerName = name.toLowerCase(Locale.ROOT);
+        if (lowerName.startsWith("tập")) {
+            return name.substring(3).trim();
+        }
+        if (lowerName.startsWith("tap")) {
+            return name.substring(3).trim();
+        }
+
+        return name;
     }
 
     private boolean containsEpisodeSlug(List<Map<String, Object>> items, String targetTap) {
@@ -900,6 +1341,58 @@ public class HomeController {
         return serverName == null || serverName.isBlank() ? "Vietsub" : serverName;
     }
 
+    private String resolveServerCardTone(String serverName, String serverLabel) {
+        String normalized = normalizeLanguageText(serverName + " " + serverLabel);
+        if (normalized.contains("thuyet minh")) {
+            return "dub";
+        }
+        if (normalized.contains("long tieng")) {
+            return "voice";
+        }
+        return "sub";
+    }
+
+    private String resolveServerCardLabel(String serverName) {
+        String normalized = normalizeLanguageText(serverName);
+        if (normalized.contains("thuyet minh")) {
+            return "Thuyết Minh";
+        }
+        if (normalized.contains("long tieng")) {
+            return "Lồng tiếng";
+        }
+        return "Phụ đề";
+    }
+
+    private String resolveServerCardIcon(String serverName, String serverLabel) {
+        String normalized = normalizeLanguageText(serverName + " " + serverLabel);
+        if (normalized.contains("thuyet minh")) {
+            return "fa-solid fa-wave-square";
+        }
+        if (normalized.contains("long tieng")) {
+            return "fa-solid fa-bullhorn";
+        }
+        return "fa-solid fa-closed-captioning";
+    }
+
+    private String buildWatchUrl(String slug, Map<String, Object> episode) {
+        if (slug == null || slug.isBlank() || episode == null || episode.isEmpty()) {
+            return "";
+        }
+
+        String tapSlug = String.valueOf(episode.getOrDefault("slug", ""));
+        if (tapSlug.isBlank()) {
+            return "";
+        }
+
+        String serverName = String.valueOf(episode.getOrDefault("server_name", ""));
+        String watchUrl = "/xem/" + slug + "/" + tapSlug;
+        if (serverName.isBlank()) {
+            return watchUrl;
+        }
+
+        return watchUrl + "?server=" + org.springframework.web.util.UriUtils.encodeQueryParam(serverName, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private String buildStreamUrl(String slug, Map<String, Object> episode) {
         if (slug == null || slug.isBlank() || episode == null || episode.isEmpty()) {
             return "";
@@ -928,7 +1421,7 @@ public class HomeController {
     private String findEpisodeStreamSource(String slug, String server, String tap) {
         Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
         Map<String, Object> movie = extractMovieDetail(payload);
-        List<Map<String, Object>> episodes = extractEpisodeServers(movie);
+        List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
         Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
         return movieApiService.normalizeExternalUrl(String.valueOf(selectedEpisode.getOrDefault("m3u8", "")));
     }

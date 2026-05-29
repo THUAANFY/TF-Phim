@@ -13,15 +13,13 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class MovieApiService {
+    private static final int DEFAULT_LIST_LIMIT = 64;
     private static final long MOVIE_LIST_TTL_MILLIS = 60 * 1000;
     private static final long MOVIE_DETAIL_TTL_MILLIS = 2 * 60 * 1000;
     private static final long SEARCH_TTL_MILLIS = 30 * 1000;
@@ -39,32 +37,39 @@ public class MovieApiService {
     private final Map<String, CacheEntry<String>> textCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<List<Map<String, String>>>> countryListCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<List<Map<String, String>>>> genreListCache = new ConcurrentHashMap<>();
-    private final Map<String, CacheEntry<String>> siteHtmlCache = new ConcurrentHashMap<>();
-    private static final String BASE_URL = "https://phim.nguonc.com/api";
-    private static final String SITE_URL = "https://phim.nguonc.com";
-    private static final Pattern COUNTRY_LINK_PATTERN = Pattern.compile(
-            "href=\"https://phim\\.nguonc\\.com/quoc-gia/([^\"]+)\"[^>]*>([^<]+)</a>",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Pattern GENRE_LINK_PATTERN = Pattern.compile(
-            "href=\"https://phim\\.nguonc\\.com/the-loai/([^\"]+)\"[^>]*>([^<]+)</a>",
-            Pattern.CASE_INSENSITIVE
-    );
+    private static final String BASE_URL = "https://phimapi.com";
     private static final Map<String, String> MOVIE_PATHS = Map.of(
-            "phim-moi", "/films/phim-moi-cap-nhat",
-            "phim-bo", "/films/danh-sach/phim-bo",
-            "phim-le", "/films/danh-sach/phim-le",
-            "hoat-hinh", "/films/the-loai/hoat-hinh"
+            "phim-moi", "/danh-sach/phim-moi-cap-nhat-v3",
+            "phim-bo", "/v1/api/danh-sach/phim-bo",
+            "phim-le", "/v1/api/danh-sach/phim-le",
+            "hoat-hinh", "/v1/api/danh-sach/hoat-hinh"
     );
 
     public String getMovies(String type, int page) {
-        String path = MOVIE_PATHS.getOrDefault(type, "/films/" + type);
+        if (type != null && type.startsWith("quoc-gia/")) {
+            String countrySlug = type.substring("quoc-gia/".length()).trim();
+            if (!countrySlug.isBlank()) {
+                return getMoviesByCountry(countrySlug, page);
+            }
+        }
+
+        if (type != null && type.startsWith("the-loai/")) {
+            String genreSlug = type.substring("the-loai/".length()).trim();
+            if (!genreSlug.isBlank()) {
+                return getMoviesByGenre(genreSlug, page);
+            }
+        }
+
+        String path = MOVIE_PATHS.getOrDefault(type, "/v1/api/danh-sach/" + type);
         String url = BASE_URL + path + "?page=" + page;
+        if (path.startsWith("/v1/api/")) {
+            url = url + "&limit=" + DEFAULT_LIST_LIMIT;
+        }
         return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
     }
 
     public String searchMovies(String keyword, int page) {
-        String url = BASE_URL + "/films/search?keyword={keyword}&page={page}";
+        String url = BASE_URL + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
         String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(keyword, StandardCharsets.UTF_8);
         return fetchCachedJson(
                 url.replace("{keyword}", encodedKeyword).replace("{page}", String.valueOf(Math.max(page, 1))),
@@ -74,20 +79,20 @@ public class MovieApiService {
     }
 
     public String getMovieDetail(String slug) {
-        String url = BASE_URL + "/film/{slug}";
+        String url = BASE_URL + "/phim/{slug}";
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(slug, StandardCharsets.UTF_8);
         return fetchCachedJson(url.replace("{slug}", encodedSlug), movieDetailJsonCache, MOVIE_DETAIL_TTL_MILLIS);
     }
 
     public String getMoviesByCountry(String countrySlug, int page) {
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(countrySlug, StandardCharsets.UTF_8);
-        String url = BASE_URL + "/films/quoc-gia/" + encodedSlug + "?page=" + Math.max(page, 1);
+        String url = BASE_URL + "/v1/api/quoc-gia/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
         return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
     }
 
     public String getMoviesByGenre(String genreSlug, int page) {
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(genreSlug, StandardCharsets.UTF_8);
-        String url = BASE_URL + "/films/the-loai/" + encodedSlug + "?page=" + Math.max(page, 1);
+        String url = BASE_URL + "/v1/api/the-loai/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
         return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
     }
 
@@ -149,13 +154,18 @@ public class MovieApiService {
             return cached.value();
         }
 
-        String html = getSiteHtml();
-        if (!html.isBlank()) {
-            List<Map<String, String>> parsed = extractCountryOptions(html);
+        try {
+            String response = fetchCachedJson(BASE_URL + "/v1/api/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
+            List<Map<String, String>> parsed = extractTaxonomyOptionsFromJson(response);
+            if (parsed.isEmpty()) {
+                response = fetchCachedJson(BASE_URL + "/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
+                parsed = extractTaxonomyOptionsFromJson(response);
+            }
             if (!parsed.isEmpty()) {
                 countryListCache.put("countries", new CacheEntry<>(parsed, System.currentTimeMillis() + COUNTRY_LIST_TTL_MILLIS));
                 return parsed;
             }
+        } catch (Exception ignored) {
         }
 
         return cached != null ? cached.value() : Collections.emptyList();
@@ -167,13 +177,18 @@ public class MovieApiService {
             return cached.value();
         }
 
-        String html = getSiteHtml();
-        if (!html.isBlank()) {
-            List<Map<String, String>> parsed = extractOptionLinks(html, GENRE_LINK_PATTERN);
+        try {
+            String response = fetchCachedJson(BASE_URL + "/v1/api/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
+            List<Map<String, String>> parsed = extractTaxonomyOptionsFromJson(response);
+            if (parsed.isEmpty()) {
+                response = fetchCachedJson(BASE_URL + "/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
+                parsed = extractTaxonomyOptionsFromJson(response);
+            }
             if (!parsed.isEmpty()) {
                 genreListCache.put("genres", new CacheEntry<>(parsed, System.currentTimeMillis() + GENRE_LIST_TTL_MILLIS));
                 return parsed;
             }
+        } catch (Exception ignored) {
         }
 
         return cached != null ? cached.value() : Collections.emptyList();
@@ -231,21 +246,38 @@ public class MovieApiService {
             return cached.value();
         }
 
-        try {
-            HttpRequest request = baseRequest(url)
-                    .header("Accept", "application/json, text/plain, */*")
-                    .GET()
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                HttpRequest request = baseRequest(url)
+                        .header("Accept", "application/json, text/plain, */*")
+                        .GET()
+                        .build();
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
-            if (response.statusCode() < 400 && response.body() != null && !response.body().isBlank()) {
-                cache.put(url, new CacheEntry<>(response.body(), System.currentTimeMillis() + ttlMillis));
-                return response.body();
+                String body = response.body();
+                if (response.statusCode() < 400 && body != null && !body.isBlank() && looksLikeJson(body)) {
+                    cache.put(url, new CacheEntry<>(body, System.currentTimeMillis() + ttlMillis));
+                    return body;
+                }
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
+
+            if (attempt < 3) {
+                try {
+                    Thread.sleep(120L * attempt);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
 
         return cached != null ? cached.value() : "{\"status\":\"error\",\"message\":\"Upstream unavailable\"}";
+    }
+
+    private boolean looksLikeJson(String body) {
+        String trimmed = body == null ? "" : body.trim();
+        return trimmed.startsWith("{") || trimmed.startsWith("[");
     }
 
     public HttpResponse<byte[]> fetchBytes(String url) throws IOException, InterruptedException {
@@ -283,26 +315,6 @@ public class MovieApiService {
         } catch (Exception ex) {
             return false;
         }
-    }
-
-    private String getSiteHtml() {
-        CacheEntry<String> cached = siteHtmlCache.get(SITE_URL);
-        if (isFresh(cached)) {
-            return cached.value();
-        }
-
-        try {
-            HttpRequest request = baseRequest(SITE_URL).GET().build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() < 400 && response.body() != null && !response.body().isBlank()) {
-                long expiresAt = System.currentTimeMillis() + Math.max(COUNTRY_LIST_TTL_MILLIS, GENRE_LIST_TTL_MILLIS);
-                siteHtmlCache.put(SITE_URL, new CacheEntry<>(response.body(), expiresAt));
-                return response.body();
-            }
-        } catch (Exception ignored) {
-        }
-
-        return cached != null ? cached.value() : "";
     }
 
     private HttpRequest.Builder baseRequest(String url) {
@@ -352,31 +364,93 @@ public class MovieApiService {
     }
 
 
-    private List<Map<String, String>> extractCountryOptions(String html) {
-        return extractOptionLinks(html, COUNTRY_LINK_PATTERN);
-    }
-
-    private List<Map<String, String>> extractOptionLinks(String html, Pattern pattern) {
-        if (html == null || html.isBlank()) {
+    private List<Map<String, String>> extractTaxonomyOptionsFromJson(String json) {
+        if (json == null || json.isBlank()) {
             return Collections.emptyList();
         }
 
-        Matcher matcher = pattern.matcher(html);
-        Map<String, Map<String, String>> options = new LinkedHashMap<>();
-        while (matcher.find()) {
-            String slug = matcher.group(1).trim();
-            String name = matcher.group(2).trim();
+        try {
+            List<Map<String, Object>> directList = objectMapper.readValue(
+                    json,
+                    new TypeReference<List<Map<String, Object>>>() {}
+            );
+            if (!directList.isEmpty()) {
+                return mapTaxonomyOptions(directList);
+            }
+        } catch (Exception ignored) {
+        }
+
+        try {
+            Map<String, Object> payload = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+            return mapTaxonomyOptions(extractTaxonomyDataList(payload));
+        } catch (Exception ex) {
+            return Collections.emptyList();
+        }
+    }
+
+    private List<Map<String, String>> mapTaxonomyOptions(List<Map<String, Object>> dataList) {
+        if (dataList == null || dataList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, String>> options = new ArrayList<>();
+        for (Map<String, Object> map : dataList) {
+            String slug = String.valueOf(map.getOrDefault("slug", map.getOrDefault("key", ""))).trim();
+            String name = String.valueOf(map.getOrDefault("name", map.getOrDefault("title", ""))).trim();
             if (slug.isBlank() || name.isBlank()) {
                 continue;
             }
+            options.add(Map.of("slug", slug, "name", name));
+        }
+        return options;
+    }
 
-            options.putIfAbsent(slug, Map.of(
-                    "slug", slug,
-                    "name", org.springframework.web.util.HtmlUtils.htmlUnescape(name)
-            ));
+    private List<Map<String, Object>> extractTaxonomyDataList(Map<String, Object> payload) {
+        Object directData = payload.get("data");
+        if (directData instanceof List<?>) {
+            return safeMapList(directData);
         }
 
-        return new ArrayList<>(options.values());
+        if (directData instanceof Map<?, ?> dataMapRaw) {
+            Map<String, Object> dataMap = safeMap(dataMapRaw);
+            Object items = dataMap.get("items");
+            if (items instanceof List<?>) {
+                return safeMapList(items);
+            }
+        }
+
+        Object items = payload.get("items");
+        if (items instanceof List<?>) {
+            return safeMapList(items);
+        }
+
+        return Collections.emptyList();
+    }
+
+    private Map<String, Object> safeMap(Map<?, ?> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, Object> result = new ConcurrentHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> safeMapList(Object value) {
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> mapItem) {
+                result.add(safeMap(mapItem));
+            }
+        }
+        return result;
     }
 
     private record CacheEntry<T>(T value, long expiresAt) {

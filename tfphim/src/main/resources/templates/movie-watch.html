@@ -38,10 +38,10 @@
 
                 <div id="playerStartGate"
                      class="player-start-gate"
-                     th:style="'--player-poster: url(' + (${movie['poster_url']} ?: ${movie['thumb_url']}) + ')'">
+                     th:style="'--player-poster: url(' + (${movie['thumb_url']} ?: ${movie['poster_url']}) + ')'">
                     <div class="player-start-card">
                         <span class="player-start-chip"
-                              th:text="${selectedEpisode['name'] != null and selectedEpisode['name'] != '' ? 'Tập ' + selectedEpisode['name'] : 'Sẵn sàng phát'}">Tập hiện tại</span>
+                              th:text="${selectedEpisode['name'] != null and selectedEpisode['name'] != '' ? (#strings.startsWith(#strings.toLowerCase(#strings.trim(selectedEpisode['name'])), 'tập') ? selectedEpisode['name'] : 'Tập ' + selectedEpisode['name']) : 'Sẵn sàng phát'}">Tập hiện tại</span>
                         <h3 th:text="${movie['name']}">Tên phim</h3>
                         <p>Nguồn phát chỉ được tải khi bạn bấm xem để tránh gọi API tự động lúc reload trang.</p>
                         <button id="startPlaybackButton" type="button" class="primary-btn player-start-btn">
@@ -76,27 +76,43 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="watch-content-grid">
+            <div class="watch-content-main">
             <div class="watch-info-card">
+                <div class="watch-info-mobile-bar">
+                    <a class="watch-info-mobile-back"
+                       th:href="@{/phim/{slug}(slug=${movie['slug']})}"
+                       aria-label="Quay lại trang chi tiết">
+                        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                    </a>
+                    <h2 th:text="${'Xem phim ' + movie['name']}">Xem phim Tên phim</h2>
+                </div>
+
                 <div class="watch-info-poster-wrap">
-                    <img class="watch-info-poster" th:src="${movie['thumb_url']} ?: ${movie['poster_url']}" th:alt="${movie['name']}">
+                    <img class="watch-info-poster" th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
                 </div>
 
                 <div class="watch-info-main">
-                    <p class="detail-breadcrumb">
+                    <!-- <p class="detail-breadcrumb">
                         Xem:
                         <a th:href="@{/phim/{slug}(slug=${movie['slug']})}" th:text="${movie['name']}">Tên phim</a>
-                    </p>
+                    </p> -->
 
                     <h1 th:text="${movie['name']}">Tên phim</h1>
                     <p class="watch-original-name" th:if="${movie['original_name']}" th:text="${movie['original_name']}">Original Name</p>
 
-                    <div class="watch-meta-chips">
-                        <span class="watch-chip watch-chip-rating" th:if="${movie['tmdb_vote_average'] != null}" th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.4</span>
-                        <span class="watch-chip" th:if="${movie['quality']}" th:text="${movie['quality']}">T16</span>
-                        <span class="watch-chip" th:if="${releaseYear != null and releaseYear != 'N/A'}" th:text="${releaseYear}">2020</span>
-                        <span class="watch-chip" th:if="${selectedServerLabel}" th:text="${selectedServerLabel}">Vietsub</span>
-                        <span class="watch-chip" th:if="${selectedEpisode['name'] != null and selectedEpisode['name'] != ''}" th:text="${'Tập ' + selectedEpisode['name']}">Tập 1</span>
+                    <div class="watch-meta-chips detail-badges">
+                        <span class="badge badge-rating"
+                              th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
+                              th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.4</span>
+                        <span class="badge hd" th:text="${movie['quality']} ?: 'HD'">HD</span>
+                        <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
+                        <span class="badge badge-lang"
+                              th:each="languageBadge : ${languageBadges}"
+                              th:classappend="${#strings.equals(languageBadge, 'Vietsub')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'Thuyết minh')} ? ' lang-dub' : ' lang-voice')"
+                              th:text="${languageBadge}">Vietsub</span>
                     </div>
 
                     <div class="detail-tags watch-info-tags" th:if="${!#lists.isEmpty(categories)}">
@@ -113,42 +129,112 @@
                 </div>
 
                 <div class="watch-info-side">
-                    <p class="watch-description" th:text="${movie['description']} ?: 'Chưa có mô tả cho phim này.'">Mô tả phim</p>
+                    <div class="watch-source-actions"
+                         th:if="${(selectedStreamUrl != null and selectedStreamUrl != '') or (selectedEpisode['embed'] != null and selectedEpisode['embed'] != '')}"
+                         aria-label="Nguồn phát">
+                        <a class="watch-source-btn"
+                           th:if="${selectedStreamUrl != null and selectedStreamUrl != ''}"
+                           th:href="${selectedStreamUrl}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           title="Mở m3u8">
+                            <i class="fa-solid fa-link" aria-hidden="true"></i>
+                            <span>m3u8</span>
+                        </a>
+                        <a class="watch-source-btn"
+                           th:if="${selectedEpisode['embed'] != null and selectedEpisode['embed'] != ''}"
+                           th:href="${selectedEpisode['embed']}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           title="Mở embed gốc">
+                            <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
+                            <span>Embed</span>
+                        </a>
+                    </div>
+
+                    <p class="watch-description" th:text="${movie['content'] ?: movie['description'] ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
 
                     <div class="watch-info-actions">
-                        <a class="secondary-btn" th:if="${selectedStreamUrl != null and selectedStreamUrl != ''}" th:href="${selectedStreamUrl}" target="_blank" rel="noopener noreferrer">
-                            <i class="fa-solid fa-link"></i> Mở m3u8
-                        </a>
-                        <a class="secondary-btn" th:if="${selectedEpisode['embed'] != null and selectedEpisode['embed'] != ''}" th:href="${selectedEpisode['embed']}" target="_blank" rel="noopener noreferrer">
-                            <i class="fa-solid fa-up-right-from-square"></i> Mở embed gốc
-                        </a>
                         <a class="watch-detail-link" th:href="@{/phim/{slug}(slug=${movie['slug']})}">
                             Thông tin phim <i class="fa-solid fa-angle-right"></i>
                         </a>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="watch-panel watch-episodes-panel">
-            <div class="watch-panel-head">
-                <h2><i class="fa-solid fa-list"></i> Danh sách tập</h2>
+        <section class="detail-section detail-server-section" th:if="${showServerCards}">
+            <div class="detail-server-section__head">
+                <h2 class="detail-server-section__title">Các bản chiếu</h2>
             </div>
 
-            <div class="episode-browser">
-                <div class="episode-browser-nav">
-                    <div class="episode-browser-nav-main">
+            <div class="detail-server-grid" th:if="${!#lists.isEmpty(detailServerCards)}">
+                <a class="detail-server-card"
+                   th:each="serverCard, serverStat : ${detailServerCards}"
+                   th:href="${serverCard['watch_url']}"
+                   th:classappend="${(serverCard['card_tone'] != null ? ' detail-server-card--' + serverCard['card_tone'] : '') + ((selectedServer == serverCard['server_name'] or (selectedServer == null and serverStat.first)) ? ' active' : '')}">
+                    <div class="detail-server-card__body">
+                        <div class="detail-server-card__content">
+                            <div class="detail-server-card__label">
+                                <i th:class="${serverCard['card_icon']}" aria-hidden="true"></i>
+                                <span th:text="${serverCard['card_subtitle']}">Phụ đề #1</span>
+                            </div>
+                            <h3 th:text="${serverCard['card_title']}">Tên phim</h3>
+                            <span class="detail-server-card__cta">Xem bản này</span>
+                        </div>
+                    </div>
+                    <div class="detail-server-card__art" aria-hidden="true">
+                        <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <div class="detail-section watch-panel watch-episodes-panel" th:unless="${showServerCards}" th:if="${!#lists.isEmpty(pagedEpisodes)}">
+            <div class="episode-browser episode-browser--watch" data-episode-browser>
+                <div class="episode-browser-toolbar">
+                    <div class="episode-browser-toolbar-main">
+                        <div class="episode-part-dropdown episode-part-dropdown--static" aria-hidden="true">
+                            <button type="button"
+                                    class="episode-part-dropdown-toggle"
+                                    tabindex="-1"
+                                    aria-label="Phần 1">
+                                <span class="episode-part-dropdown-toggle-main">
+                                    <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i>
+                                    <span class="episode-part-dropdown-label">Phần 1</span>
+                                    <i class="fa-solid fa-caret-down" aria-hidden="true"></i>
+                                </span>
+                                <span class="episode-part-dropdown-divider" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="episode-browser-server-row">
+                    <div class="episode-server-dropdown" data-episode-server-dropdown>
+                        <button type="button"
+                                class="episode-server-dropdown-toggle"
+                                aria-expanded="false"
+                                aria-haspopup="menu"
+                                aria-label="Chọn server">
+                            <span class="episode-server-dropdown-label">Server 1</span>
+                            <i class="fa-solid fa-angle-down" aria-hidden="true"></i>
+                        </button>
+                        <div class="episode-server-dropdown-menu" hidden>
+                            <div class="episode-server-dropdown-title">Server / bản dịch</div>
+                            <div class="episode-server-dropdown-items"></div>
+                        </div>
+                    </div>
+
                         <div class="episode-server-tabs" role="tablist" aria-label="Nguồn phát">
                             <button type="button"
                                     class="episode-server-tab"
                                     th:each="serverItem, serverStat : ${pagedEpisodes}"
-                                    th:text="${serverItem['server_label']}"
+                                    th:text="${serverItem['server_name']}"
                                     th:classappend="${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)} ? ' active'"
                                     th:attr="data-server-target=${'watch-server-' + serverStat.index},aria-selected=${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)}">
                                 Vietsub #1
                             </button>
                         </div>
-                    </div>
                 </div>
 
                 <div class="episode-server-panels">
@@ -161,7 +247,7 @@
                             <button type="button"
                                     class="episode-range-tab"
                                     th:each="page : ${serverItem['pages']}"
-                                    th:text="${'Tập ' + page['label']}"
+                                    th:text="${page['label'] != null and #strings.startsWith(#strings.toLowerCase(#strings.trim(page['label'])), 'tập') ? page['label'] : 'Tập ' + page['label']}"
                                     th:classappend="${page['pageNumber'] == serverItem['activePage']} ? ' active'"
                                     th:attr="data-page-target=${page['pageNumber']}">
                                 Tập 01 - Tập 50
@@ -171,14 +257,14 @@
                         <div class="episode-page"
                              th:each="page : ${serverItem['pages']}"
                              th:attr="data-page=${page['pageNumber']}">
-                            <div class="episode-list">
+                            <div class="episode-list detail-episode-list">
                                 <a class="episode-item"
                                    th:each="episode : ${page['items']}"
                                    th:classappend="${selectedServer == serverItem['server_name'] and selectedTap == episode['slug']} ? ' active'"
                                    th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${serverItem['server_name']})}">
                                     <span class="episode-item-label">
                                         <i class="fa-solid fa-play"></i>
-                                        <span th:text="${'Tập ' + episode['name']}">Tập 1</span>
+                                        <span th:text="${episode['name'] != null and #strings.startsWith(#strings.toLowerCase(#strings.trim(episode['name'])), 'tập') ? episode['name'] : 'Tập ' + episode['name']}">Tập 1</span>
                                     </span>
                                 </a>
                             </div>
@@ -186,6 +272,26 @@
                     </div>
                 </div>
             </div>
+        </div>
+            </div>
+
+            <aside class="detail-section watch-actors-sidebar" aria-labelledby="watch-actors-title">
+                <h2 id="watch-actors-title" class="detail-gallery-title watch-actors-title">Diễn viên</h2>
+                <div class="detail-actors-grid watch-actors-grid" th:if="${!#lists.isEmpty(actors)}">
+                    <div class="detail-actor-card" th:each="actor : ${actors}">
+                        <div class="detail-actor-avatar">
+                            <img th:src="${actor['image_url'] != null and actor['image_url'] != '' ? actor['image_url'] : '/uploads/Images/avatar.png'}"
+                                 th:alt="${actor['name']}"
+                                 loading="lazy">
+                        </div>
+                        <h3 th:text="${actor['name']}">Tên diễn viên</h3>
+                    </div>
+                </div>
+                <div class="detail-gallery-empty" th:if="${#lists.isEmpty(actors)}">
+                    <i class="fa-solid fa-box-open" aria-hidden="true"></i>
+                    <span>Đang cập nhật diễn viên...</span>
+                </div>
+            </aside>
         </div>
     </section>
 </main>
@@ -385,3 +491,4 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
+
