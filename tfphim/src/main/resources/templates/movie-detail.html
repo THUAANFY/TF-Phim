@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
-<body>
+<body class="detail-page-body">
 <th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
 
 <main class="detail-page detail-layout-v2" th:if="${errorMessage == null}">
@@ -45,7 +45,7 @@
                         <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                         <span class="badge badge-lang"
                               th:each="languageBadge : ${languageBadges}"
-                              th:classappend="${#strings.equals(languageBadge, 'Vietsub')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'Thuyết minh')} ? ' lang-dub' : ' lang-voice')"
+                              th:classappend="${#strings.equals(languageBadge, 'P.Đề')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'T.Minh')} ? ' lang-dub' : ' lang-voice')"
                               th:text="${languageBadge}">Vietsub</span>
                     </div>
                     <div class="detail-tags detail-mobile-tags" th:if="${!#lists.isEmpty(categories)}">
@@ -77,7 +77,7 @@
                     <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                     <span class="badge badge-lang"
                           th:each="languageBadge : ${languageBadges}"
-                          th:classappend="${#strings.equals(languageBadge, 'Vietsub')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'Thuyết minh')} ? ' lang-dub' : ' lang-voice')"
+                          th:classappend="${#strings.equals(languageBadge, 'P.Đề')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'T.Minh')} ? ' lang-dub' : ' lang-voice')"
                           th:text="${languageBadge}">Vietsub</span>
                 </div>
 

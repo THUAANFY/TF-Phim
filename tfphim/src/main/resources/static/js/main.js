@@ -182,6 +182,51 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+function isSeriesCardMovie(movie, listingType = "") {
+    const normalizedListingType = String(listingType || "").trim().toLowerCase();
+    if (normalizedListingType === "phim-le") {
+        return false;
+    }
+    if (normalizedListingType === "phim-bo") {
+        return true;
+    }
+
+    const normalizedType = String(movie.type || movie.movie_type || movie.category_type || "")
+        .trim()
+        .toLowerCase();
+
+    if (["single", "phim-le"].includes(normalizedType)) {
+        return false;
+    }
+    if (["series", "tvshows", "phim-bo"].includes(normalizedType)) {
+        return true;
+    }
+
+    const totalEpisodes = Number(movie.total_episodes || movie.episode_total || 0);
+    return Number.isFinite(totalEpisodes) && totalEpisodes > 1;
+}
+
+function getCardEpisodeLabel(movie, listingType = "") {
+    const episode = String(movie.episode_current || movie.current_episode || "").trim();
+    if (!episode) {
+        return "";
+    }
+    if (!isSeriesCardMovie(movie, listingType)) {
+        return episode;
+    }
+
+    const normalized = episode
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\u0111/g, "d")
+        .replace(/\u0110/g, "D")
+        .toLowerCase();
+
+    return normalized.includes("hoan tat") || normalized.includes("full") || normalized.includes("completed")
+        ? "HO\u00c0N T\u1ea4T"
+        : episode;
+}
+
 function getLanguageBadges(language) {
     const normalized = String(language || "").toLowerCase();
     const badges = [];
@@ -508,10 +553,10 @@ function bindFavoritePageActions() {
     });
 }
 
-function createMovieCard(movie) {
+function createMovieCard(movie, listingType = "") {
     const thumb = getMovieImage(movie);
     const name = movie.name || "Khong ro";
-    const episode = movie.episode_current || movie.current_episode || "";
+    const episode = getCardEpisodeLabel(movie, listingType);
     const quality = movie.quality || "HD";
     const year = getMovieYear(movie);
     const rating = getMovieRating(movie);
@@ -914,7 +959,7 @@ async function loadHeroSlider() {
     }
 }
 
-function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim.") {
+function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim.", listingType = "") {
     const grid = byId(containerId);
     if (!grid) {
         return;
@@ -925,7 +970,7 @@ function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim."
         return;
     }
 
-    grid.innerHTML = movies.map(createMovieCard).join("");
+    grid.innerHTML = movies.map((movie) => createMovieCard(movie, listingType)).join("");
     grid.querySelectorAll(".movie-card-link.is-disabled").forEach((link) => {
         link.addEventListener("click", (event) => {
             event.preventDefault();
@@ -1264,7 +1309,7 @@ async function loadSection(type, containerId) {
 
     try {
         const movies = await fetchMoviesWithLimit(type, getHomeSectionLimit(grid));
-        renderMovies(containerId, movies);
+        renderMovies(containerId, movies, "Khong tim thay phim.", type);
     } catch (error) {
         console.error("Load section failed:", type, error);
         if (grid) {

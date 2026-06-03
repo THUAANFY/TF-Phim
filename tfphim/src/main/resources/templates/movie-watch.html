@@ -111,7 +111,7 @@
                         <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                         <span class="badge badge-lang"
                               th:each="languageBadge : ${languageBadges}"
-                              th:classappend="${#strings.equals(languageBadge, 'Vietsub')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'Thuyết minh')} ? ' lang-dub' : ' lang-voice')"
+                              th:classappend="${#strings.equals(languageBadge, 'P.Đề')} ? ' lang-sub' : (${#strings.equals(languageBadge, 'T.Minh')} ? ' lang-dub' : ' lang-voice')"
                               th:text="${languageBadge}">Vietsub</span>
                     </div>
 

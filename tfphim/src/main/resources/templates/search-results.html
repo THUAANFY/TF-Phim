@@ -81,8 +81,8 @@
                         <span class="badge hd" th:text="${movie['quality'] != null and movie['quality'] != '' ? movie['quality'] : 'HD'}">HD</span>
                         <span class="badge ep"
                               style="top:8px;left:auto;right:8px;"
-                              th:if="${movie['episode_current'] != null or movie['current_episode'] != null}"
-                              th:text="${movie['episode_current'] != null and movie['episode_current'] != '' ? movie['episode_current'] : movie['current_episode']}">Full</span>
+                              th:if="${movie['card_episode_label'] != null and movie['card_episode_label'] != ''}"
+                              th:text="${movie['card_episode_label']}">HO&#192;N T&#7844;T</span>
                         <div class="card-thumb-badges"
                              th:if="${movie['year'] != null or (movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0')}">
                             <span class="badge badge-year" th:if="${movie['year'] != null}" th:text="${movie['year']}">2026</span>

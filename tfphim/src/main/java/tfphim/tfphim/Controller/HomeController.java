@@ -92,7 +92,7 @@ public class HomeController {
                     () -> movieApiService.getMoviesData(type, currentPage)
             );
         }
-        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        List<Map<String, Object>> movies = extractMovieItems(pagePayload, type);
 
         String categoryTitle = resolveListingTitle(pagePayload, categoryMeta.getOrDefault("title", type));
         String categoryDescription = categoryMeta.getOrDefault("description", "Danh sách phim được lấy theo định dạng từ API.");
@@ -733,20 +733,24 @@ public class HomeController {
     }
 
     private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload) {
+        return extractMovieItems(payload, "");
+    }
+
+    private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload, String listingType) {
         Object items = payload.get("items");
         if (items instanceof List<?>) {
-            return normalizeMovieListItems(safeList(items));
+            return normalizeMovieListItems(safeList(items), listingType);
         }
 
         Map<String, Object> data = safeMap(payload.get("data"));
         Object dataItems = data.get("items");
         if (dataItems instanceof List<?>) {
-            return normalizeMovieListItems(safeList(dataItems));
+            return normalizeMovieListItems(safeList(dataItems), listingType);
         }
 
         Object rawData = payload.get("data");
         if (rawData instanceof List<?>) {
-            return normalizeMovieListItems(safeList(rawData));
+            return normalizeMovieListItems(safeList(rawData), listingType);
         }
 
         return Collections.emptyList();
@@ -807,6 +811,10 @@ public class HomeController {
     }
 
     private List<Map<String, Object>> normalizeMovieListItems(List<Map<String, Object>> items) {
+        return normalizeMovieListItems(items, "");
+    }
+
+    private List<Map<String, Object>> normalizeMovieListItems(List<Map<String, Object>> items, String listingType) {
         if (items.isEmpty()) {
             return Collections.emptyList();
         }
@@ -820,9 +828,64 @@ public class HomeController {
             mapped.put("poster_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("poster_url", ""))));
             mapped.put("thumb_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("thumb_url", ""))));
             mapped.put("tmdb_vote_average", resolveMovieRating(mapped));
+            mapped.put("card_episode_label", resolveCardEpisodeLabel(mapped, listingType));
             normalized.add(mapped);
         }
         return normalized;
+    }
+
+    private String resolveCardEpisodeLabel(Map<String, Object> movie, String listingType) {
+        String episode = normalizeMovieTextValue(movie.get("episode_current"));
+        if (episode.isBlank()) {
+            episode = normalizeMovieTextValue(movie.get("current_episode"));
+        }
+        if (episode.isBlank()) {
+            return "";
+        }
+        if (!isSeriesCardMovie(movie, listingType)) {
+            return episode;
+        }
+
+        String normalized = normalizeLanguageText(episode);
+        if (normalized.contains("hoan tat") || normalized.contains("full") || normalized.contains("completed")) {
+            return "HO\u00c0N T\u1ea4T";
+        }
+
+        return episode;
+    }
+
+    private boolean isSeriesCardMovie(Map<String, Object> movie, String listingType) {
+        String normalizedListingType = normalizeLanguageText(listingType == null ? "" : listingType);
+        if ("phim-le".equals(normalizedListingType)) {
+            return false;
+        }
+        if ("phim-bo".equals(normalizedListingType)) {
+            return true;
+        }
+
+        String type = normalizeLanguageText(resolveFirstMovieText(movie, "type", "movie_type", "category_type"));
+        if ("single".equals(type) || "phim-le".equals(type)) {
+            return false;
+        }
+        if ("series".equals(type) || "tvshows".equals(type) || "phim-bo".equals(type)) {
+            return true;
+        }
+
+        int totalEpisodes = extractNonNegativeInt(
+                movie.getOrDefault("total_episodes", movie.get("episode_total")),
+                0
+        );
+        return totalEpisodes > 1;
+    }
+
+    private String resolveFirstMovieText(Map<String, Object> movie, String... keys) {
+        for (String key : keys) {
+            String value = normalizeMovieTextValue(movie.get(key));
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private String resolveMovieRating(Map<String, Object> movie) {
