@@ -144,8 +144,138 @@ async function fetchMoviesWithLimit(type, limit = 12) {
 }
 
 async function searchMovies(keyword) {
-    const data = await getJson(`${API_BASE}/search?keyword=${encodeURIComponent(keyword)}`);
-    return getMovieItems(data);
+    const encodedKeyword = encodeURIComponent(keyword);
+    const responses = await Promise.allSettled([
+        getJson(`${API_BASE}/search?keyword=${encodedKeyword}`).then((payload) => ({ payload, source: "kk" })),
+        getJson(`${API_BASE}/ophim/search?keyword=${encodedKeyword}`).then((payload) => ({ payload, source: "ophim" }))
+    ]);
+
+    const movies = responses.flatMap((response) => (
+        response.status === "fulfilled"
+            ? getMovieItems(response.value.payload).map((movie) => ({ ...movie, source: response.value.source }))
+            : []
+    ));
+
+    return sortSearchResults(mergeSearchResults(movies));
+}
+
+function mergeSearchResults(movies) {
+    if (!Array.isArray(movies) || !movies.length) {
+        return [];
+    }
+
+    const moviesByKey = new Map();
+    movies.forEach((movie) => {
+        const slug = String(movie?.slug ?? "").trim();
+        const name = normalizeSearchText(movie?.name);
+        const key = slug || name;
+        if (!key) {
+            return;
+        }
+
+        const existingMovie = moviesByKey.get(key);
+        if (!existingMovie || compareSearchPriority(movie, existingMovie) < 0) {
+            moviesByKey.set(key, movie);
+        }
+    });
+
+    return Array.from(moviesByKey.values());
+}
+
+function compareSearchPriority(first, second) {
+    const trailerCompare = getSearchTrailerScore(second) - getSearchTrailerScore(first);
+    if (trailerCompare !== 0) {
+        return trailerCompare;
+    }
+
+    const episodeCompare = getSearchEpisodeScore(second) - getSearchEpisodeScore(first);
+    if (episodeCompare !== 0) {
+        return episodeCompare;
+    }
+
+    return getSearchYearScore(second) - getSearchYearScore(first);
+}
+
+function sortSearchResults(movies) {
+    if (!Array.isArray(movies) || movies.length <= 1) {
+        return Array.isArray(movies) ? movies : [];
+    }
+
+    return [...movies].sort(compareSearchPriority);
+}
+
+function getSearchTrailerScore(movie) {
+    const episode = normalizeSearchText(movie?.current_episode ?? movie?.episode_current);
+    const status = normalizeSearchText(movie?.status ?? movie?.episode_status);
+    const type = normalizeSearchText(movie?.type ?? movie?.movie_type ?? movie?.category_type);
+    const quality = normalizeSearchText(movie?.quality);
+    const combinedText = [episode, status, type, quality].join(" ");
+    const trailerUrl = String(movie?.trailer_url ?? "").trim();
+
+    return combinedText.includes("trailer")
+        || combinedText.includes("sap chieu")
+        || status.includes("sắp chiếu")
+        || (trailerUrl && getSearchEpisodeScore(movie) === 0)
+        ? 1
+        : 0;
+}
+
+function getSearchEpisodeScore(movie) {
+    const totalEpisode = extractNonNegativeInt(movie?.total_episodes ?? movie?.episode_total);
+    if (totalEpisode > 0) {
+        return totalEpisode;
+    }
+
+    const currentEpisode = extractEpisodeCountFromLabel(movie?.current_episode ?? movie?.episode_current);
+    if (currentEpisode > 0) {
+        return currentEpisode;
+    }
+
+    return isSeriesCardMovie(movie || {}) ? 1 : 0;
+}
+
+function getSearchYearScore(movie) {
+    return extractYear(movie?.year)
+        || extractYear(movie?.release_year)
+        || extractYear(movie?.modified?.time)
+        || extractYear(movie?.created)
+        || 0;
+}
+
+function extractNonNegativeInt(value) {
+    const number = Number.parseInt(String(value ?? "").trim(), 10);
+    return Number.isFinite(number) ? Math.max(number, 0) : 0;
+}
+
+function extractEpisodeCountFromLabel(value) {
+    const normalized = String(value ?? "")
+        .replace(/[^0-9/]+/g, " ")
+        .trim();
+    if (!normalized) {
+        return 0;
+    }
+
+    const firstSlashPart = normalized.split("/")[0] || normalized;
+    return extractNonNegativeInt(firstSlashPart);
+}
+
+function extractYear(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value >= 1800 && value <= 3000 ? value : 0;
+    }
+
+    const match = String(value ?? "").match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/);
+    return match ? extractNonNegativeInt(match[1]) : 0;
+}
+
+function normalizeSearchText(value) {
+    return String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\u0111/g, "d")
+        .replace(/\u0110/g, "D")
+        .toLowerCase()
+        .trim();
 }
 
 async function fetchMovieDetail(slug) {
@@ -262,6 +392,12 @@ function getLanguageBadges(language) {
 }
 
 function getMovieImage(movie) {
+    if (movie?.source === "ophim") {
+        return resolveMovieImageUrl(movie.thumb_url)
+            || resolveMovieImageUrl(movie.poster_url)
+            || "https://via.placeholder.com/600x900?text=No+Image";
+    }
+
     return resolveMovieImageUrl(movie.poster_url)
         || resolveMovieImageUrl(movie.thumb_url)
         || "https://via.placeholder.com/600x900?text=No+Image";
@@ -282,11 +418,26 @@ function resolveMovieImageUrl(url) {
     }
 
     const normalizedPath = raw.startsWith("/") ? raw.slice(1) : raw;
+    if (normalizedPath.startsWith("uploads/movies/")) {
+        return `https://img.ophim.live/${normalizedPath}`;
+    }
     if (normalizedPath.startsWith("upload/")) {
         return `https://img.phimapi.com/${normalizedPath}`;
     }
+    if (looksLikeImageFile(normalizedPath)) {
+        return `https://img.ophim.live/uploads/movies/${normalizedPath}`;
+    }
 
     return raw;
+}
+
+function looksLikeImageFile(path) {
+    const lowerPath = String(path || "").toLowerCase();
+    return lowerPath.endsWith(".jpg")
+        || lowerPath.endsWith(".jpeg")
+        || lowerPath.endsWith(".png")
+        || lowerPath.endsWith(".webp")
+        || lowerPath.endsWith(".avif");
 }
 
 function getMovieOriginalName(movie) {

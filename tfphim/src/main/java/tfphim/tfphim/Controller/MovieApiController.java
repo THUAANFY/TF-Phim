@@ -46,6 +46,20 @@ public class MovieApiController {
         }
     }
 
+    @GetMapping(value = "/ophim/search", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> searchOphimMovies(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(required = false) String year
+    ) {
+        try {
+            return ResponseEntity.ok(movieApiService.searchOphimMovies(keyword, page));
+        } catch (org.springframework.web.client.RestClientException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body("{\"status\":\"error\",\"message\":\"Khong the tim kiem phim tu OPhim.\"}");
+        }
+    }
+
     @GetMapping(value = "/{slug}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> getMovieDetail(@PathVariable String slug) {
         try {

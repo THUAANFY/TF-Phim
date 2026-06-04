@@ -37,13 +37,30 @@ public class MovieApiService {
     private final Map<String, CacheEntry<String>> textCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<List<Map<String, String>>>> countryListCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<List<Map<String, String>>>> genreListCache = new ConcurrentHashMap<>();
-    private static final String BASE_URL = "https://phimapi.com";
+    private static final String DEFAULT_KK_BASE_URL = "https://phimapi.com";
+    private static final String DEFAULT_OPHIM_BASE_URL = "https://ophim1.com";
     private static final Map<String, String> MOVIE_PATHS = Map.of(
             "phim-moi", "/danh-sach/phim-moi-cap-nhat-v3",
             "phim-bo", "/v1/api/danh-sach/phim-bo",
             "phim-le", "/v1/api/danh-sach/phim-le",
             "hoat-hinh", "/v1/api/danh-sach/hoat-hinh"
     );
+    private static final Map<String, String> OPHIM_MOVIE_PATHS = Map.of(
+            "phim-moi", "/danh-sach/phim-moi-cap-nhat",
+            "phim-bo", "/v1/api/danh-sach/phim-bo",
+            "phim-le", "/v1/api/danh-sach/phim-le",
+            "hoat-hinh", "/v1/api/danh-sach/hoat-hinh"
+    );
+    private final String kkBaseUrl;
+    private final String ophimBaseUrl;
+
+    public MovieApiService(
+            @org.springframework.beans.factory.annotation.Value("${kkphim.api.base-url:https://phimapi.com}") String kkBaseUrl,
+            @org.springframework.beans.factory.annotation.Value("${ophim.api.base-url:https://ophim1.com}") String ophimBaseUrl
+    ) {
+        this.kkBaseUrl = normalizeBaseUrl(kkBaseUrl, DEFAULT_KK_BASE_URL);
+        this.ophimBaseUrl = normalizeBaseUrl(ophimBaseUrl, DEFAULT_OPHIM_BASE_URL);
+    }
 
     public String getMovies(String type, int page) {
         if (type != null && type.startsWith("quoc-gia/")) {
@@ -61,7 +78,16 @@ public class MovieApiService {
         }
 
         String path = MOVIE_PATHS.getOrDefault(type, "/v1/api/danh-sach/" + type);
-        String url = BASE_URL + path + "?page=" + page;
+        String url = kkBaseUrl + path + "?page=" + page;
+        if (path.startsWith("/v1/api/")) {
+            url = url + "&limit=" + DEFAULT_LIST_LIMIT;
+        }
+        return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
+    }
+
+    public String getOphimMovies(String type, int page) {
+        String path = OPHIM_MOVIE_PATHS.getOrDefault(type, "/v1/api/danh-sach/" + type);
+        String url = ophimBaseUrl + path + "?page=" + Math.max(page, 1);
         if (path.startsWith("/v1/api/")) {
             url = url + "&limit=" + DEFAULT_LIST_LIMIT;
         }
@@ -69,7 +95,17 @@ public class MovieApiService {
     }
 
     public String searchMovies(String keyword, int page) {
-        String url = BASE_URL + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
+        String url = kkBaseUrl + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
+        String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(keyword, StandardCharsets.UTF_8);
+        return fetchCachedJson(
+                url.replace("{keyword}", encodedKeyword).replace("{page}", String.valueOf(Math.max(page, 1))),
+                searchCache,
+                SEARCH_TTL_MILLIS
+        );
+    }
+
+    public String searchOphimMovies(String keyword, int page) {
+        String url = ophimBaseUrl + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
         String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(keyword, StandardCharsets.UTF_8);
         return fetchCachedJson(
                 url.replace("{keyword}", encodedKeyword).replace("{page}", String.valueOf(Math.max(page, 1))),
@@ -79,20 +115,38 @@ public class MovieApiService {
     }
 
     public String getMovieDetail(String slug) {
-        String url = BASE_URL + "/phim/{slug}";
+        String url = kkBaseUrl + "/phim/{slug}";
+        String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(slug, StandardCharsets.UTF_8);
+        return fetchCachedJson(url.replace("{slug}", encodedSlug), movieDetailJsonCache, MOVIE_DETAIL_TTL_MILLIS);
+    }
+
+    public String getOphimMovieDetail(String slug) {
+        String url = ophimBaseUrl + "/phim/{slug}";
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(slug, StandardCharsets.UTF_8);
         return fetchCachedJson(url.replace("{slug}", encodedSlug), movieDetailJsonCache, MOVIE_DETAIL_TTL_MILLIS);
     }
 
     public String getMoviesByCountry(String countrySlug, int page) {
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(countrySlug, StandardCharsets.UTF_8);
-        String url = BASE_URL + "/v1/api/quoc-gia/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
+        String url = kkBaseUrl + "/v1/api/quoc-gia/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
+        return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
+    }
+
+    public String getOphimMoviesByCountry(String countrySlug, int page) {
+        String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(countrySlug, StandardCharsets.UTF_8);
+        String url = ophimBaseUrl + "/v1/api/quoc-gia/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
         return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
     }
 
     public String getMoviesByGenre(String genreSlug, int page) {
         String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(genreSlug, StandardCharsets.UTF_8);
-        String url = BASE_URL + "/v1/api/the-loai/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
+        String url = kkBaseUrl + "/v1/api/the-loai/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
+        return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
+    }
+
+    public String getOphimMoviesByGenre(String genreSlug, int page) {
+        String encodedSlug = org.springframework.web.util.UriUtils.encodePathSegment(genreSlug, StandardCharsets.UTF_8);
+        String url = ophimBaseUrl + "/v1/api/the-loai/" + encodedSlug + "?page=" + Math.max(page, 1) + "&limit=" + DEFAULT_LIST_LIMIT;
         return fetchCachedJson(url, movieListCache, MOVIE_LIST_TTL_MILLIS);
     }
 
@@ -109,6 +163,10 @@ public class MovieApiService {
         }
     }
 
+    public Map<String, Object> getOphimMoviesData(String type, int page) {
+        return parseJsonObject(getOphimMovies(type, page));
+    }
+
     public Map<String, Object> searchMoviesData(String keyword, int page) {
         try {
             String response = searchMovies(keyword, page);
@@ -120,6 +178,10 @@ public class MovieApiService {
         } catch (Exception ex) {
             return Collections.emptyMap();
         }
+    }
+
+    public Map<String, Object> searchOphimMoviesData(String keyword, int page) {
+        return parseJsonObject(searchOphimMovies(keyword, page));
     }
 
     public Map<String, Object> getMoviesByCountryData(String countrySlug, int page) {
@@ -135,6 +197,10 @@ public class MovieApiService {
         }
     }
 
+    public Map<String, Object> getOphimMoviesByCountryData(String countrySlug, int page) {
+        return parseJsonObject(getOphimMoviesByCountry(countrySlug, page));
+    }
+
     public Map<String, Object> getMoviesByGenreData(String genreSlug, int page) {
         try {
             String response = getMoviesByGenre(genreSlug, page);
@@ -148,6 +214,10 @@ public class MovieApiService {
         }
     }
 
+    public Map<String, Object> getOphimMoviesByGenreData(String genreSlug, int page) {
+        return parseJsonObject(getOphimMoviesByGenre(genreSlug, page));
+    }
+
     public List<Map<String, String>> getCountryOptions() {
         CacheEntry<List<Map<String, String>>> cached = countryListCache.get("countries");
         if (isFresh(cached)) {
@@ -155,10 +225,10 @@ public class MovieApiService {
         }
 
         try {
-            String response = fetchCachedJson(BASE_URL + "/v1/api/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
+            String response = fetchCachedJson(kkBaseUrl + "/v1/api/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
             List<Map<String, String>> parsed = extractTaxonomyOptionsFromJson(response);
             if (parsed.isEmpty()) {
-                response = fetchCachedJson(BASE_URL + "/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
+                response = fetchCachedJson(kkBaseUrl + "/quoc-gia", movieListCache, COUNTRY_LIST_TTL_MILLIS);
                 parsed = extractTaxonomyOptionsFromJson(response);
             }
             if (!parsed.isEmpty()) {
@@ -178,10 +248,10 @@ public class MovieApiService {
         }
 
         try {
-            String response = fetchCachedJson(BASE_URL + "/v1/api/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
+            String response = fetchCachedJson(kkBaseUrl + "/v1/api/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
             List<Map<String, String>> parsed = extractTaxonomyOptionsFromJson(response);
             if (parsed.isEmpty()) {
-                response = fetchCachedJson(BASE_URL + "/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
+                response = fetchCachedJson(kkBaseUrl + "/the-loai", movieListCache, GENRE_LIST_TTL_MILLIS);
                 parsed = extractTaxonomyOptionsFromJson(response);
             }
             if (!parsed.isEmpty()) {
@@ -210,11 +280,25 @@ public class MovieApiService {
             Map<String, Object> result = payload != null ? payload : Collections.emptyMap();
             if (!result.isEmpty()) {
                 movieDetailCache.put(slug, new CacheEntry<>(result, System.currentTimeMillis() + MOVIE_DETAIL_TTL_MILLIS));
+                if (hasMoviePayload(result)) {
+                    result.putIfAbsent("source", "kkphim");
+                    return result;
+                }
             }
-            return result;
         } catch (Exception ex) {
-            return cached != null ? cached.value() : Collections.emptyMap();
         }
+
+        try {
+            Map<String, Object> result = parseJsonObject(getOphimMovieDetail(slug));
+            if (!result.isEmpty() && hasMoviePayload(result)) {
+                result.put("source", "ophim");
+                movieDetailCache.put(slug, new CacheEntry<>(result, System.currentTimeMillis() + MOVIE_DETAIL_TTL_MILLIS));
+                return result;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return cached != null ? cached.value() : Collections.emptyMap();
     }
 
     public HttpResponse<String> fetchText(String url) throws IOException, InterruptedException {
@@ -238,6 +322,50 @@ public class MovieApiService {
             return new CachedHttpResponse<>(cached.value(), 200, normalizedUrl);
         }
         return response;
+    }
+
+    private String encodePathSegment(String value) {
+        return org.springframework.web.util.UriUtils.encodePathSegment(
+                value == null ? "" : value,
+                StandardCharsets.UTF_8
+        );
+    }
+
+    private Map<String, Object> parseJsonObject(String response) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(
+                    response,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+            return payload != null ? payload : Collections.emptyMap();
+        } catch (Exception ex) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private boolean hasMoviePayload(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return false;
+        }
+        if (payload.get("movie") instanceof Map<?, ?> movie && !movie.isEmpty()) {
+            return true;
+        }
+        if (payload.get("data") instanceof Map<?, ?> data) {
+            Object movie = data.get("movie");
+            return movie instanceof Map<?, ?> movieMap && !movieMap.isEmpty();
+        }
+        return false;
+    }
+
+    private String normalizeBaseUrl(String value, String fallback) {
+        String normalized = normalizeExternalUrl(value);
+        if (normalized.isBlank()) {
+            normalized = fallback;
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private String fetchCachedJson(String url, Map<String, CacheEntry<String>> cache, long ttlMillis) {

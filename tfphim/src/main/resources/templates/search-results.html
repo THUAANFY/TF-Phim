@@ -56,7 +56,7 @@
         <div class="movie-grid" th:if="${errorMessage == null and !#lists.isEmpty(movies)}">
             <a class="movie-card-link"
                th:each="movie : ${movies}"
-               th:href="@{/phim/{slug}(slug=${movie['slug']})}">
+               th:href="${movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug']}">
                 <article class="movie-card"
                          th:attr="data-slug=${movie['slug']},
                                   data-name=${movie['name']},

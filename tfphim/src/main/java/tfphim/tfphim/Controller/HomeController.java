@@ -92,7 +92,10 @@ public class HomeController {
                     () -> movieApiService.getMoviesData(type, currentPage)
             );
         }
-        List<Map<String, Object>> movies = extractMovieItems(pagePayload, type);
+        List<Map<String, Object>> movies = mergeSupplementalMovies(
+                extractMovieItems(pagePayload, type),
+                extractMovieItems(movieApiService.getOphimMoviesData(type, currentPage), type, "ophim")
+        );
 
         String categoryTitle = resolveListingTitle(pagePayload, categoryMeta.getOrDefault("title", type));
         String categoryDescription = categoryMeta.getOrDefault("description", "Danh sách phim được lấy theo định dạng từ API.");
@@ -150,7 +153,14 @@ public class HomeController {
                     () -> movieApiService.searchMoviesData(normalizedKeyword, currentPage)
             );
         }
-        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        List<Map<String, Object>> movies = mergeSupplementalMovies(
+                extractMovieItems(pagePayload),
+                currentPage == 1
+                        ? extractMovieItems(movieApiService.searchOphimMoviesData(normalizedKeyword, currentPage), "", "ophim")
+                        : Collections.emptyList()
+        );
+        movies = sortSearchResults(movies);
+        totalItems += Math.max(0, movies.size() - extractMovieItems(pagePayload).size());
 
         model.addAttribute("movies", movies);
         model.addAttribute("totalItems", totalItems);
@@ -190,7 +200,10 @@ public class HomeController {
                     () -> movieApiService.getMoviesByCountryData(slug, currentPage)
             );
         }
-        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        List<Map<String, Object>> movies = mergeSupplementalMovies(
+                extractMovieItems(pagePayload),
+                extractMovieItems(movieApiService.getOphimMoviesByCountryData(slug, currentPage), "", "ophim")
+        );
         String countryTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", countryTitle);
@@ -230,7 +243,10 @@ public class HomeController {
                     () -> movieApiService.getMoviesByGenreData(slug, currentPage)
             );
         }
-        List<Map<String, Object>> movies = extractMovieItems(pagePayload);
+        List<Map<String, Object>> movies = mergeSupplementalMovies(
+                extractMovieItems(pagePayload),
+                extractMovieItems(movieApiService.getOphimMoviesByGenreData(slug, currentPage), "", "ophim")
+        );
         String genreTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", genreTitle);
@@ -736,6 +752,11 @@ public class HomeController {
         return extractMovieItems(payload, "");
     }
 
+    private String buildRuntimeText(Object runtime) {
+        int minutes = extractNonNegativeInt(runtime, 0);
+        return minutes > 0 ? minutes + " phÃºt" : "";
+    }
+
     private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload, String listingType) {
         Object items = payload.get("items");
         if (items instanceof List<?>) {
@@ -756,20 +777,69 @@ public class HomeController {
         return Collections.emptyList();
     }
 
+    private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload, String listingType, String source) {
+        Object items = payload.get("items");
+        if (items instanceof List<?>) {
+            return normalizeMovieListItems(safeList(items), listingType, source);
+        }
+
+        Map<String, Object> data = safeMap(payload.get("data"));
+        Object dataItems = data.get("items");
+        if (dataItems instanceof List<?>) {
+            return normalizeMovieListItems(safeList(dataItems), listingType, source);
+        }
+
+        Object rawData = payload.get("data");
+        if (rawData instanceof List<?>) {
+            return normalizeMovieListItems(safeList(rawData), listingType, source);
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<Map<String, Object>> mergeSupplementalMovies(
+            List<Map<String, Object>> primaryMovies,
+            List<Map<String, Object>> supplementalMovies
+    ) {
+        List<Map<String, Object>> mergedMovies = new ArrayList<>();
+        LinkedHashSet<String> seenKeys = new LinkedHashSet<>();
+
+        appendUniqueMovies(mergedMovies, seenKeys, primaryMovies);
+        appendUniqueMovies(mergedMovies, seenKeys, supplementalMovies);
+        return mergedMovies;
+    }
+
+    private void appendUniqueMovies(
+            List<Map<String, Object>> target,
+            LinkedHashSet<String> seenKeys,
+            List<Map<String, Object>> movies
+    ) {
+        for (Map<String, Object> movie : movies) {
+            String slug = String.valueOf(movie.getOrDefault("slug", "")).trim();
+            String key = slug.isBlank()
+                    ? normalizeLanguageText(String.valueOf(movie.getOrDefault("name", "")))
+                    : slug;
+            if (key.isBlank() || seenKeys.add(key)) {
+                target.add(movie);
+            }
+        }
+    }
+
     private Map<String, Object> extractMovieDetail(Map<String, Object> payload) {
+        String source = String.valueOf(payload.getOrDefault("source", ""));
         Map<String, Object> movie = safeMap(payload.get("movie"));
         if (!movie.isEmpty()) {
-            return normalizeMovieDetail(movie);
+            return normalizeMovieDetail(movie, source);
         }
 
         Map<String, Object> data = safeMap(payload.get("data"));
         movie = safeMap(data.get("movie"));
         if (!movie.isEmpty()) {
-            return normalizeMovieDetail(movie);
+            return normalizeMovieDetail(movie, source);
         }
 
         if (!data.isEmpty()) {
-            return normalizeMovieDetail(data);
+            return normalizeMovieDetail(data, source);
         }
 
         return Collections.emptyMap();
@@ -791,6 +861,10 @@ public class HomeController {
     }
 
     private Map<String, Object> normalizeMovieDetail(Map<String, Object> movie) {
+        return normalizeMovieDetail(movie, "");
+    }
+
+    private Map<String, Object> normalizeMovieDetail(Map<String, Object> movie, String source) {
         Map<String, Object> normalized = new HashMap<>(movie);
         if (!normalized.containsKey("language") && normalized.containsKey("lang")) {
             normalized.put("language", normalized.get("lang"));
@@ -804,8 +878,10 @@ public class HomeController {
         if (!normalized.containsKey("original_name") && normalized.containsKey("origin_name")) {
             normalized.put("original_name", normalized.get("origin_name"));
         }
-        normalized.put("poster_url", normalizeMovieImageUrl(String.valueOf(normalized.getOrDefault("poster_url", ""))));
-        normalized.put("thumb_url", normalizeMovieImageUrl(String.valueOf(normalized.getOrDefault("thumb_url", ""))));
+        if (source != null && !source.isBlank()) {
+            normalized.putIfAbsent("source", source);
+        }
+        normalizeMovieImages(normalized, source);
         normalized.put("tmdb_vote_average", resolveMovieRating(normalized));
         return normalized;
     }
@@ -815,6 +891,10 @@ public class HomeController {
     }
 
     private List<Map<String, Object>> normalizeMovieListItems(List<Map<String, Object>> items, String listingType) {
+        return normalizeMovieListItems(items, listingType, "");
+    }
+
+    private List<Map<String, Object>> normalizeMovieListItems(List<Map<String, Object>> items, String listingType, String source) {
         if (items.isEmpty()) {
             return Collections.emptyList();
         }
@@ -825,8 +905,10 @@ public class HomeController {
             if (!mapped.containsKey("language") && mapped.containsKey("lang")) {
                 mapped.put("language", mapped.get("lang"));
             }
-            mapped.put("poster_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("poster_url", ""))));
-            mapped.put("thumb_url", normalizeMovieImageUrl(String.valueOf(mapped.getOrDefault("thumb_url", ""))));
+            if (source != null && !source.isBlank()) {
+                mapped.putIfAbsent("source", source);
+            }
+            normalizeMovieImages(mapped, source);
             mapped.put("tmdb_vote_average", resolveMovieRating(mapped));
             mapped.put("card_episode_label", resolveCardEpisodeLabel(mapped, listingType));
             normalized.add(mapped);
@@ -911,6 +993,24 @@ public class HomeController {
     }
 
     private String normalizeMovieImageUrl(String url) {
+        return normalizeMovieImageUrl(url, "");
+    }
+
+    private void normalizeMovieImages(Map<String, Object> movie, String source) {
+        String posterUrl = normalizeMovieImageUrl(String.valueOf(movie.getOrDefault("poster_url", "")), source);
+        String thumbUrl = normalizeMovieImageUrl(String.valueOf(movie.getOrDefault("thumb_url", "")), source);
+
+        if (isOphimSource(source)) {
+            movie.put("poster_url", thumbUrl);
+            movie.put("thumb_url", posterUrl);
+            return;
+        }
+
+        movie.put("poster_url", posterUrl);
+        movie.put("thumb_url", thumbUrl);
+    }
+
+    private String normalizeMovieImageUrl(String url, String source) {
         if (url == null || url.isBlank()) {
             return "";
         }
@@ -924,11 +1024,30 @@ public class HomeController {
         }
 
         String normalizedPath = trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
+        if (normalizedPath.startsWith("uploads/movies/")) {
+            return "https://img.ophim.live/" + normalizedPath;
+        }
         if (normalizedPath.startsWith("upload/")) {
             return "https://img.phimapi.com/" + normalizedPath;
         }
+        if (isOphimSource(source) && looksLikeImageFile(normalizedPath)) {
+            return "https://img.ophim.live/uploads/movies/" + normalizedPath;
+        }
 
         return trimmed;
+    }
+
+    private boolean isOphimSource(String source) {
+        return source != null && "ophim".equalsIgnoreCase(source.trim());
+    }
+
+    private boolean looksLikeImageFile(String path) {
+        String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
+        return lowerPath.endsWith(".jpg")
+                || lowerPath.endsWith(".jpeg")
+                || lowerPath.endsWith(".png")
+                || lowerPath.endsWith(".webp")
+                || lowerPath.endsWith(".avif");
     }
 
     private List<Map<String, Object>> adaptKkPhimEpisodes(List<Map<String, Object>> rawServers) {
@@ -1024,6 +1143,99 @@ public class HomeController {
                 || currentEpisode.contains("hoan tat")
                 || currentEpisode.contains("full")
                 || currentEpisode.contains("completed");
+    }
+
+    private List<Map<String, Object>> sortSearchResults(List<Map<String, Object>> movies) {
+        if (movies.isEmpty()) {
+            return movies;
+        }
+
+        List<Map<String, Object>> sortedMovies = new ArrayList<>(movies);
+        sortedMovies.sort((first, second) -> {
+            int trailerCompare = Integer.compare(resolveSearchTrailerScore(second), resolveSearchTrailerScore(first));
+            if (trailerCompare != 0) {
+                return trailerCompare;
+            }
+
+            int episodeCompare = Integer.compare(resolveSearchEpisodeScore(second), resolveSearchEpisodeScore(first));
+            if (episodeCompare != 0) {
+                return episodeCompare;
+            }
+
+            return Integer.compare(resolveSearchYearScore(second), resolveSearchYearScore(first));
+        });
+        return sortedMovies;
+    }
+
+    private int resolveSearchTrailerScore(Map<String, Object> movie) {
+        String episode = normalizeLanguageText(resolveFirstMovieText(movie, "current_episode", "episode_current"));
+        String status = normalizeLanguageText(resolveFirstMovieText(movie, "status", "episode_status"));
+        String type = normalizeLanguageText(resolveFirstMovieText(movie, "type", "movie_type", "category_type"));
+        String quality = normalizeLanguageText(resolveFirstMovieText(movie, "quality"));
+        String combinedText = String.join(" ", episode, status, type, quality);
+        String trailerUrl = resolveFirstMovieText(movie, "trailer_url");
+
+        if (combinedText.contains("trailer") || combinedText.contains("sap chieu")) {
+            return 1;
+        }
+
+        return !trailerUrl.isBlank() && resolveSearchEpisodeScore(movie) == 0 ? 1 : 0;
+    }
+
+    private int resolveSearchEpisodeScore(Map<String, Object> movie) {
+        int fromTotal = extractNonNegativeInt(
+                movie.getOrDefault("total_episodes", movie.get("episode_total")),
+                0
+        );
+        if (fromTotal > 0) {
+            return fromTotal;
+        }
+
+        int fromCurrent = extractEpisodeCountFromLabel(String.valueOf(
+                movie.getOrDefault("current_episode", movie.getOrDefault("episode_current", ""))
+        ));
+        if (fromCurrent > 0) {
+            return fromCurrent;
+        }
+
+        return isSeriesCardMovie(movie, "") ? 1 : 0;
+    }
+
+    private int resolveSearchYearScore(Map<String, Object> movie) {
+        int year = extractYear(movie.get("year"));
+        if (year > 0) {
+            return year;
+        }
+
+        year = extractYear(movie.get("release_year"));
+        if (year > 0) {
+            return year;
+        }
+
+        Map<String, Object> modified = safeMap(movie.get("modified"));
+        year = extractYear(modified.get("time"));
+        if (year > 0) {
+            return year;
+        }
+
+        return extractYear(movie.get("created"));
+    }
+
+    private int extractYear(Object value) {
+        if (value instanceof Number number) {
+            int year = number.intValue();
+            return year >= 1800 && year <= 3000 ? year : 0;
+        }
+
+        if (value instanceof String text) {
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\b(18\\d{2}|19\\d{2}|20\\d{2}|21\\d{2})\\b")
+                    .matcher(text);
+            if (matcher.find()) {
+                return extractNonNegativeInt(matcher.group(1), 0);
+            }
+        }
+
+        return 0;
     }
 
     private int extractEpisodeCountFromLabel(String label) {
