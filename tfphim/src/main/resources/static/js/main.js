@@ -775,7 +775,7 @@ function createHeroMeta(movie) {
 
     return [
         `<span class="hero-meta-chip hero-meta-rating">IMDb ${escapeHtml(rating)}</span>`,
-        quality ? `<span class="hero-meta-chip">${escapeHtml(quality)}</span>` : "",
+        quality ? `<span class="fhd">${escapeHtml(quality)}</span>` : "",
         year ? `<span class="hero-meta-chip">${escapeHtml(year)}</span>` : "",
         serverLabel ? `<span class="hero-meta-chip">${escapeHtml(serverLabel)}</span>` : "",
         episode ? `<span class="hero-meta-chip">${escapeHtml(episode)}</span>` : ""
@@ -1227,7 +1227,7 @@ function bindMovieHoverPopup(root = document) {
                 : (slug ? `/xem/${encodeURIComponent(slug)}` : "#");
             const chips = [
                 hasVisibleRating(rating) ? `<span class="movie-hover-popup__chip movie-hover-popup__chip--rating">IMDb ${escapeHtml(rating)}</span>` : "",
-                quality ? `<span class="movie-hover-popup__chip">${escapeHtml(quality)}</span>` : "",
+                quality ? `<span class="movie-hover-popup__chiphd">${escapeHtml(quality)}</span>` : "",
                 ageRating ? `<span class="movie-hover-popup__chip">${escapeHtml(ageRating)}</span>` : "",
                 year ? `<span class="movie-hover-popup__chip">${escapeHtml(year)}</span>` : "",
                 duration ? `<span class="movie-hover-popup__chip">${escapeHtml(duration)}</span>` : ""

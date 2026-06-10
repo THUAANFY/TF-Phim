@@ -41,7 +41,7 @@
                         <span class="badge badge-rating"
                               th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
                               th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.2</span>
-                        <span class="badge hd" th:text="${movie['quality']} ?: 'HD'">HD</span>
+                        <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                         <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                         <span class="badge badge-lang"
                               th:each="languageBadge : ${languageBadges}"
@@ -73,7 +73,7 @@
                     <span class="badge badge-rating"
                           th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
                           th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.2</span>
-                    <span class="badge hd" th:text="${movie['quality']} ?: 'HD'">HD</span>
+                    <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                     <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                     <span class="badge badge-lang"
                           th:each="languageBadge : ${languageBadges}"
