@@ -91,7 +91,11 @@
                 </div>
 
                 <div class="watch-info-poster-wrap">
-                    <img class="watch-info-poster" th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                    <img class="watch-info-poster"
+                         th:src="${movie['poster_url']} ?: ${movie['thumb_url']}"
+                         th:alt="${movie['name']}"
+                         decoding="async"
+                         fetchpriority="high">
                 </div>
 
                 <div class="watch-info-main">
@@ -183,7 +187,11 @@
                         </div>
                     </div>
                     <div class="detail-server-card__art" aria-hidden="true">
-                        <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                        <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}"
+                             th:alt="${movie['name']}"
+                             loading="lazy"
+                             decoding="async"
+                             fetchpriority="low">
                     </div>
                 </a>
             </div>
@@ -282,7 +290,9 @@
                         <div class="detail-actor-avatar">
                             <img th:src="${actor['image_url'] != null and actor['image_url'] != '' ? actor['image_url'] : '/uploads/Images/avatar.png'}"
                                  th:alt="${actor['name']}"
-                                 loading="lazy">
+                                 loading="lazy"
+                                 decoding="async"
+                                 fetchpriority="low">
                         </div>
                         <h3 th:text="${actor['name']}">Tên diễn viên</h3>
                     </div>

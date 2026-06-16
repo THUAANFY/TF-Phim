@@ -287,6 +287,7 @@ public class HomeController {
             model.addAttribute("movie", movie);
             model.addAttribute("categories", extractCategories(movie));
             model.addAttribute("actors", extractActors(movie));
+            model.addAttribute("galleryImages", buildGalleryImages(movie));
             model.addAttribute("languageBadges", extractLanguageBadges(movie));
             model.addAttribute("releaseYear", findCategoryValue(movie, "Năm"));
             model.addAttribute("movieDuration", resolveMovieField(movie, "time", "runtime", "duration"));
@@ -312,6 +313,7 @@ public class HomeController {
             model.addAttribute("firstEpisodeStreamUrl", buildStreamUrl(String.valueOf(movie.getOrDefault("slug", slug)), firstEpisode));
             return "movie-detail";
         } catch (Exception ex) {
+            log.error("Cannot load movie detail for slug={}", slug, ex);
             model.addAttribute("pageTitle", "Không tìm thấy phim");
             model.addAttribute("errorMessage", "Không thể tải chi tiết phim vào lúc này.");
             return "movie-detail";
@@ -602,6 +604,109 @@ public class HomeController {
 
         addActor(actors, seenNames, normalizeMovieTextValue(rawActors), "");
         return actors;
+    }
+
+    private List<Map<String, Object>> buildGalleryImages(Map<String, Object> movie) {
+        List<Map<String, Object>> images = new ArrayList<>();
+        LinkedHashSet<String> seenUrls = new LinkedHashSet<>();
+
+        addGalleryImage(images, seenUrls, movie.get("thumb_url"), "movie-api", "backdrop");
+        addGalleryImage(images, seenUrls, movie.get("poster_url"), "movie-api", "poster");
+        collectGalleryImages(images, seenUrls, movie.get("images"), "movie-api");
+        collectGalleryImages(images, seenUrls, movie.get("image"), "movie-api");
+        collectGalleryImages(images, seenUrls, movie.get("photos"), "movie-api");
+        collectGalleryImages(images, seenUrls, movie.get("backdrops"), "movie-api");
+        collectGalleryImages(images, seenUrls, movie.get("posters"), "movie-api");
+        collectGalleryImages(images, seenUrls, movie.get("gallery"), "movie-api");
+
+        int year = resolveMovieYear(movie);
+        String title = resolveFirstMovieText(movie, "name", "title");
+        String originalTitle = resolveFirstMovieText(movie, "original_name", "origin_name", "original_title");
+        String type = resolveFirstMovieText(movie, "type", "movie_type", "category_type");
+        for (Map<String, Object> item : movieApiService.getTmdbImages(title, originalTitle, year, type)) {
+            addGalleryImage(
+                    images,
+                    seenUrls,
+                    item.get("url"),
+                    "tmdb",
+                    String.valueOf(item.getOrDefault("type", "image")),
+                    item.getOrDefault("width", 0),
+                    item.getOrDefault("height", 0)
+            );
+        }
+
+        return images;
+    }
+
+    private void collectGalleryImages(List<Map<String, Object>> images, LinkedHashSet<String> seenUrls, Object value, String source) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof CharSequence sequence) {
+            for (String part : sequence.toString().split(",")) {
+                addGalleryImage(images, seenUrls, part, source, "image");
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> item = safeMap(map);
+            String type = String.valueOf(item.getOrDefault("type", item.getOrDefault("kind", "image")));
+            Object url = item.getOrDefault(
+                    "url",
+                    item.getOrDefault("src", item.getOrDefault("file_path", item.getOrDefault("path", "")))
+            );
+            addGalleryImage(images, seenUrls, url, source, type, item.getOrDefault("width", 0), item.getOrDefault("height", 0));
+            for (Object nested : item.values()) {
+                if (nested instanceof Iterable<?> || nested instanceof Map<?, ?>) {
+                    collectGalleryImages(images, seenUrls, nested, source);
+                }
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                collectGalleryImages(images, seenUrls, item, source);
+            }
+        }
+    }
+
+    private void addGalleryImage(List<Map<String, Object>> images, LinkedHashSet<String> seenUrls, Object rawUrl, String source, String type) {
+        addGalleryImage(images, seenUrls, rawUrl, source, type, 0, 0);
+    }
+
+    private void addGalleryImage(
+            List<Map<String, Object>> images,
+            LinkedHashSet<String> seenUrls,
+            Object rawUrl,
+            String source,
+            String type,
+            Object width,
+            Object height
+    ) {
+        String url = normalizeMovieImageUrl(String.valueOf(rawUrl == null ? "" : rawUrl), source);
+        if (url.isBlank() || !seenUrls.add(url)) {
+            return;
+        }
+
+        Map<String, Object> item = new HashMap<>();
+        item.put("url", url);
+        item.put("source", source == null || source.isBlank() ? "api" : source);
+        item.put("type", type == null || type.isBlank() ? "image" : type);
+        item.put("width", extractNonNegativeInt(width, 0));
+        item.put("height", extractNonNegativeInt(height, 0));
+        images.add(item);
+    }
+
+    private int resolveMovieYear(Map<String, Object> movie) {
+        int year = extractNonNegativeInt(movie.get("year"), 0);
+        if (year > 0) {
+            return year;
+        }
+        year = extractNonNegativeInt(movie.get("release_year"), 0);
+        if (year > 0) {
+            return year;
+        }
+        return extractNonNegativeInt(findCategoryValue(movie, "NÄƒm"), 0);
     }
 
     private void addActor(List<Map<String, Object>> actors, LinkedHashSet<String> seenNames, String rawName, String imageUrl) {

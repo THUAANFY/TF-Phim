@@ -788,6 +788,33 @@ function createHeroTags(movie) {
         .join("");
 }
 
+function renderHeroTitle(heroTitle, movieName, logoUrl) {
+    if (!heroTitle) {
+        return;
+    }
+
+    const canUseLogo = window.matchMedia("(min-width: 1025px)").matches && logoUrl;
+    if (!canUseLogo) {
+        heroTitle.textContent = movieName;
+        heroTitle.classList.remove("has-logo");
+        return;
+    }
+
+    const logo = document.createElement("img");
+    logo.className = "hero-title-logo";
+    logo.src = logoUrl;
+    logo.alt = movieName;
+    logo.loading = "eager";
+    logo.decoding = "async";
+    logo.addEventListener("error", () => {
+        heroTitle.textContent = movieName;
+        heroTitle.classList.remove("has-logo");
+    }, { once: true });
+
+    heroTitle.replaceChildren(logo);
+    heroTitle.classList.add("has-logo");
+}
+
 function renderHeroThumbs(movies, activeIndex) {
     return movies.map((movie, index) => {
         const thumb = resolveMovieImageUrl(movie.thumb_url) || resolveMovieImageUrl(movie.poster_url) || "https://via.placeholder.com/160x90?text=No+Image";
@@ -835,7 +862,9 @@ async function loadHeroSlider() {
         let activePointerId = null;
         let pointerMoved = false;
         let swipedDuringPointer = false;
+        let currentHeroMovie = null;
         const heroDetailCache = new Map();
+        const desktopHeroLogoQuery = window.matchMedia("(min-width: 1025px)");
         const autoplayDelay = 20000;
         const contentRevealDelay = 500;
 
@@ -858,10 +887,9 @@ async function loadHeroSlider() {
 
             const name = movie.name || "Phim noi bat";
             const originalName = movie.origin_name || movie.original_name || "TF-Phim Spotlight";
+            currentHeroMovie = movie;
 
-            if (heroTitle) {
-                heroTitle.textContent = name;
-            }
+            renderHeroTitle(heroTitle, name, movie.tmdb_logo_url || "");
             if (heroOriginal) {
                 heroOriginal.textContent = originalName;
             }
@@ -893,6 +921,13 @@ async function loadHeroSlider() {
                 });
             }
         };
+
+        desktopHeroLogoQuery.addEventListener("change", () => {
+            if (!currentHeroMovie) {
+                return;
+            }
+            renderHeroTitle(heroTitle, currentHeroMovie.name || "Phim noi bat", currentHeroMovie.tmdb_logo_url || "");
+        });
 
         const getHeroMovieWithContent = async (movie) => {
             if (!movie?.slug || movie.content) {
@@ -1892,6 +1927,114 @@ function bindDetailContentTabs() {
     });
 }
 
+function bindDetailGalleryLightbox() {
+    const galleryItems = Array.from(document.querySelectorAll(".detail-image-gallery-item[data-gallery-src]"));
+    if (!galleryItems.length) {
+        return;
+    }
+
+    const images = galleryItems
+        .map((item) => ({
+            src: item.dataset.gallerySrc || "",
+            alt: item.querySelector("img")?.alt || "Ảnh phim"
+        }))
+        .filter((item) => item.src);
+    if (!images.length) {
+        return;
+    }
+
+    let lightbox = document.querySelector(".image-lightbox");
+    if (!lightbox) {
+        lightbox = document.createElement("div");
+        lightbox.className = "image-lightbox";
+        lightbox.setAttribute("role", "dialog");
+        lightbox.setAttribute("aria-modal", "true");
+        lightbox.setAttribute("aria-label", "Xem ảnh phim");
+        lightbox.innerHTML = `
+            <div class="image-lightbox__top">
+                <span class="image-lightbox__counter"></span>
+                <button type="button" class="image-lightbox__close" aria-label="Đóng">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="image-lightbox__stage">
+                <img class="image-lightbox__image" src="" alt="">
+            </div>
+            <div class="image-lightbox__bottom">
+                <button type="button" class="image-lightbox__nav" data-lightbox-prev aria-label="Ảnh trước">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <button type="button" class="image-lightbox__nav" data-lightbox-next aria-label="Ảnh tiếp theo">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        `;
+        document.body.appendChild(lightbox);
+    }
+
+    const imageEl = lightbox.querySelector(".image-lightbox__image");
+    const counterEl = lightbox.querySelector(".image-lightbox__counter");
+    const closeButton = lightbox.querySelector(".image-lightbox__close");
+    const prevButton = lightbox.querySelector("[data-lightbox-prev]");
+    const nextButton = lightbox.querySelector("[data-lightbox-next]");
+    let activeIndex = 0;
+
+    const renderImage = () => {
+        const image = images[activeIndex];
+        if (!image || !imageEl) {
+            return;
+        }
+        imageEl.src = image.src;
+        imageEl.alt = image.alt;
+        if (counterEl) {
+            counterEl.textContent = `${activeIndex + 1} / ${images.length}`;
+        }
+    };
+
+    const openLightbox = (index) => {
+        activeIndex = Math.max(0, Math.min(index, images.length - 1));
+        renderImage();
+        lightbox.classList.add("is-open");
+        document.body.classList.add("is-lightbox-open");
+        closeButton?.focus();
+    };
+
+    const closeLightbox = () => {
+        lightbox.classList.remove("is-open");
+        document.body.classList.remove("is-lightbox-open");
+    };
+
+    const goToRelativeImage = (direction) => {
+        activeIndex = (activeIndex + direction + images.length) % images.length;
+        renderImage();
+    };
+
+    galleryItems.forEach((item, index) => {
+        item.addEventListener("click", () => openLightbox(index));
+    });
+
+    closeButton?.addEventListener("click", closeLightbox);
+    prevButton?.addEventListener("click", () => goToRelativeImage(-1));
+    nextButton?.addEventListener("click", () => goToRelativeImage(1));
+    lightbox.addEventListener("click", (event) => {
+        if (event.target === lightbox || event.target.classList.contains("image-lightbox__stage")) {
+            closeLightbox();
+        }
+    });
+    document.addEventListener("keydown", (event) => {
+        if (!lightbox.classList.contains("is-open")) {
+            return;
+        }
+        if (event.key === "Escape") {
+            closeLightbox();
+        } else if (event.key === "ArrowLeft") {
+            goToRelativeImage(-1);
+        } else if (event.key === "ArrowRight") {
+            goToRelativeImage(1);
+        }
+    });
+}
+
 function bindEpisodePartDropdownV2() {
     const dropdowns = Array.from(document.querySelectorAll(".episode-browser [data-episode-part-dropdown]"));
     if (!dropdowns.length) return;
@@ -2428,6 +2571,7 @@ document.addEventListener("DOMContentLoaded", () => {
     runInitSafely("bindCategoryLinks", bindCategoryLinks);
     runInitSafely("bindCategoryPagination", bindCategoryPagination);
     runInitSafely("bindDetailContentTabs", bindDetailContentTabs);
+    runInitSafely("bindDetailGalleryLightbox", bindDetailGalleryLightbox);
     runInitSafely("bindEpisodePagination", bindEpisodePagination);
     runInitSafely("bindEpisodePartDropdownV2", bindEpisodePartDropdownV2);
     runInitSafely("bindEpisodeBrowser", bindEpisodeBrowser);

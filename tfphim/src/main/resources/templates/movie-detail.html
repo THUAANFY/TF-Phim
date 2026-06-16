@@ -20,7 +20,10 @@
         <div class="detail-layout-grid">
             <aside class="detail-layout-side">
                 <div class="detail-poster detail-layout-poster">
-                    <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                    <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}"
+                         th:alt="${movie['name']}"
+                         decoding="async"
+                         fetchpriority="high">
                 </div>
 
                 <h1 class="detail-layout-title" th:text="${movie['name']}">Tên phim</h1>
@@ -217,7 +220,11 @@
                                     </div>
                                 </div>
                                 <div class="detail-server-card__art" aria-hidden="true">
-                                    <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}" th:alt="${movie['name']}">
+                                    <img th:src="${movie['poster_url']} ?: ${movie['thumb_url']}"
+                                         th:alt="${movie['name']}"
+                                         loading="lazy"
+                                         decoding="async"
+                                         fetchpriority="low">
                                 </div>
                             </a>
                         </div>
@@ -312,20 +319,22 @@
                          role="tabpanel"
                          data-detail-panel="gallery"
                          hidden>
-                    <h2 class="detail-gallery-title">Videos</h2>
-                    <div class="detail-gallery-empty">
-                        <i class="fa-solid fa-box-open" aria-hidden="true"></i>
-                        <span>Đang cập nhật videos...</span>
-                    </div>
-                </section>
-
-                <section id="detail-tab-gallery"
-                         class="detail-tab-panel detail-gallery-panel"
-                         role="tabpanel"
-                         data-detail-panel="gallery"
-                         hidden>
                     <h2 class="detail-gallery-title">Ảnh</h2>
-                    <div class="detail-gallery-empty">
+                    <div class="detail-image-gallery-grid" th:if="${!#lists.isEmpty(galleryImages)}">
+                        <button type="button"
+                                class="detail-image-gallery-item"
+                                th:each="galleryImage, imageStat : ${galleryImages}"
+                                th:classappend="${galleryImage['type'] == 'poster'} ? ' is-poster' : (${galleryImage['type'] == 'logo'} ? ' is-logo' : '')"
+                                th:attr="data-gallery-src=${galleryImage['url']},data-gallery-index=${imageStat.index},aria-label=${'Xem ảnh ' + (imageStat.index + 1)}">
+                            <img th:src="${galleryImage['url']}"
+                                 th:alt="${movie['name'] + ' - ảnh ' + (imageStat.index + 1)}"
+                                 loading="lazy"
+                                 decoding="async"
+                                 fetchpriority="low">
+                            <span th:text="${galleryImage['source']}">api</span>
+                        </button>
+                    </div>
+                    <div class="detail-gallery-empty" th:if="${#lists.isEmpty(galleryImages)}">
                         <i class="fa-solid fa-box-open" aria-hidden="true"></i>
                         <span>Đang cập nhật ảnh...</span>
                     </div>
@@ -342,7 +351,9 @@
                             <div class="detail-actor-avatar">
                                 <img th:src="${actor['image_url'] != null and actor['image_url'] != '' ? actor['image_url'] : '/uploads/Images/avatar.png'}"
                                      th:alt="${actor['name']}"
-                                     loading="lazy">
+                                     loading="lazy"
+                                     decoding="async"
+                                     fetchpriority="low">
                             </div>
                             <h3 th:text="${actor['name']}">Tên diễn viên</h3>
                         </div>

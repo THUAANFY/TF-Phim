@@ -74,7 +74,10 @@
                                   data-rating=${movie['tmdb_vote_average']}">
                     <div class="card-thumb">
                         <img th:src="${movie['poster_url'] != null and movie['poster_url'] != '' ? movie['poster_url'] : movie['thumb_url']}"
-                             th:alt="${movie['name']}" loading="lazy">
+                             th:alt="${movie['name']}"
+                             loading="lazy"
+                             decoding="async"
+                             fetchpriority="low">
                         <div class="overlay">
                             <div class="play-btn"><i class="fa-solid fa-play"></i></div>
                         </div>
