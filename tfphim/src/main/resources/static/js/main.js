@@ -358,40 +358,41 @@ function getCardEpisodeLabel(movie, listingType = "") {
 }
 
 function getLanguageBadges(language) {
-    const normalized = String(language || "").toLowerCase();
+    const normalized = normalizeSearchText(language).replace(/\s+/g, " ");
     const badges = [];
 
     if (normalized.includes("vietsub")) {
-        badges.push({ label: "P.Đề", className: "lang-sub" });
+        badges.push({ label: "P.\u0110\u1ec1", className: "lang-sub" });
     }
-    if (normalized.includes("thuyết minh") || normalized.includes("thuyet minh")) {
+    if (normalized.includes("thuyet minh")) {
         badges.push({ label: "T.Minh", className: "lang-dub" });
     }
-    if (normalized.includes("lồng tiếng") || normalized.includes("long tieng")) {
-        badges.push({ label: "L.Tiếng", className: "lang-voice" });
+    if (normalized.includes("long tieng")) {
+        badges.push({ label: "L.Ti\u1ebfng", className: "lang-voice" });
     }
 
     return badges;
 }
 
-function getLanguageBadges(language) {
-    const normalized = String(language || "").toLowerCase();
-    const badges = [];
-
-    if (normalized.includes("vietsub")) {
-        badges.push({ label: "P.Đề", className: "lang-sub" });
-    }
-    if (normalized.includes("thuyet minh") || normalized.includes("thuyết minh")) {
-        badges.push({ label: "T.Minh", className: "lang-dub" });
-    }
-    if (normalized.includes("long tieng") || normalized.includes("lồng tiếng")) {
-        badges.push({ label: "L.Tiếng", className: "lang-voice" });
-    }
-
-    return badges;
+function getMovieLanguageBadgeSource(movie) {
+    return [
+        movie?.lang,
+        movie?.language,
+        movie?.episode_current,
+        movie?.current_episode,
+        movie?.status,
+        movie?.episode_status
+    ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ");
 }
-
 function getMovieImage(movie) {
+    const cardImage = resolveMovieImageUrl(movie?.card_image_url);
+    if (cardImage) {
+        return cardImage;
+    }
+
     if (movie?.source === "ophim") {
         return resolveMovieImageUrl(movie.thumb_url)
             || resolveMovieImageUrl(movie.poster_url)
@@ -478,8 +479,7 @@ function getMovieYear(movie) {
 }
 
 function getMovieRating(movie) {
-    const rating = movie.tmdb_vote_average
-        || movie.tmdb?.vote_average
+    const rating = movie.movie_rating
         || movie.imdb?.vote_average
         || movie.rating
         || "";
@@ -564,6 +564,7 @@ function createMovieDatasetAttributes(movie) {
         ["original-name", getMovieOriginalName(movie)],
         ["thumb", movie.thumb_url || ""],
         ["poster", movie.poster_url || ""],
+        ["card-image", movie.card_image_url || getMovieImage(movie)],
         ["quality", movie.quality || ""],
         ["episode", movie.episode_current || movie.current_episode || ""],
         ["language", movie.lang || movie.language || ""],
@@ -587,6 +588,7 @@ function readMovieDataFromCard(card) {
         original_name: card.dataset.originalName || "",
         thumb_url: card.dataset.thumb || "",
         poster_url: card.dataset.poster || "",
+        card_image_url: card.dataset.cardImage || "",
         quality: card.dataset.quality || "",
         episode_current: card.dataset.episode || "",
         current_episode: card.dataset.episode || "",
@@ -597,7 +599,7 @@ function readMovieDataFromCard(card) {
         category: card.dataset.category || "",
         status: card.dataset.status || "",
         trailer_url: card.dataset.trailerUrl || "",
-        tmdb_vote_average: card.dataset.rating || ""
+        movie_rating: card.dataset.rating || ""
     };
 }
 
@@ -610,6 +612,7 @@ function mergeMovieData(baseMovie, detailMovie) {
         original_name: getMovieOriginalName(detailMovie) || getMovieOriginalName(baseMovie),
         thumb_url: detailMovie.thumb_url || baseMovie.thumb_url,
         poster_url: detailMovie.poster_url || baseMovie.poster_url,
+        card_image_url: detailMovie.card_image_url || baseMovie.card_image_url,
         quality: detailMovie.quality || baseMovie.quality,
         episode_current: detailMovie.episode_current || detailMovie.current_episode || baseMovie.episode_current,
         current_episode: detailMovie.current_episode || detailMovie.episode_current || baseMovie.current_episode,
@@ -620,7 +623,7 @@ function mergeMovieData(baseMovie, detailMovie) {
         category: detailMovie.category || baseMovie.category,
         status: getMovieStatusLine(detailMovie) || getMovieStatusLine(baseMovie),
         trailer_url: detailMovie.trailer_url || baseMovie.trailer_url,
-        tmdb_vote_average: getMovieRating(detailMovie) || getMovieRating(baseMovie)
+        movie_rating: getMovieRating(detailMovie) || getMovieRating(baseMovie)
     };
 }
 
@@ -704,7 +707,7 @@ function bindFavoritePageActions() {
     });
 }
 
-function createMovieCard(movie, listingType = "") {
+function createMovieCard(movie, listingType = "", index = 0) {
     const thumb = getMovieImage(movie);
     const name = movie.name || "Khong ro";
     const episode = getCardEpisodeLabel(movie, listingType);
@@ -712,16 +715,21 @@ function createMovieCard(movie, listingType = "") {
     const year = getMovieYear(movie);
     const rating = getMovieRating(movie);
     const slug = movie.slug || "";
-    const languageBadges = getLanguageBadges(movie.lang || movie.language);
+    const languageBadges = getLanguageBadges(getMovieLanguageBadgeSource(movie));
     const href = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
     const disabledClass = slug ? "" : " is-disabled";
     const datasetAttrs = createMovieDatasetAttributes(movie);
+    const isPriorityImage = index < 6;
+    const loading = isPriorityImage ? "eager" : "lazy";
+    const fetchPriority = isPriorityImage ? "high" : "low";
 
     return `
         <a class="movie-card-link${disabledClass}" href="${escapeHtml(href)}" ${slug ? "" : 'aria-disabled="true" tabindex="-1"'}>
             <article class="movie-card" ${datasetAttrs}>
                 <div class="card-thumb">
-                    <img src="${escapeHtml(thumb)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async" fetchpriority="low"
+                    <img src="${escapeHtml(thumb)}" alt="${escapeHtml(name)}" width="360" height="540"
+                         sizes="(max-width: 480px) 46vw, (max-width: 900px) 30vw, 180px"
+                         loading="${loading}" decoding="async" fetchpriority="${fetchPriority}"
                          onerror="this.src='https://via.placeholder.com/200x300?text=No+Image'">
                     <div class="overlay">
                         <div class="play-btn"><i class="fa-solid fa-play"></i></div>
@@ -771,7 +779,7 @@ function createHeroMeta(movie) {
     const quality = movie.quality || "HD";
     const year = movie.year || movie.release_year || movie.modified?.time?.slice(0, 4) || "";
     const serverLabel = movie.lang || movie.language || "Phần 1";
-    const rating = movie.tmdb_vote_average || movie.imdb?.vote_average || "0.0";
+    const rating = movie.movie_rating || movie.imdb?.vote_average || "0.0";
 
     return [
         `<span class="hero-meta-chip hero-meta-rating">IMDb ${escapeHtml(rating)}</span>`,
@@ -889,7 +897,7 @@ async function loadHeroSlider() {
             const originalName = movie.origin_name || movie.original_name || "TF-Phim Spotlight";
             currentHeroMovie = movie;
 
-            renderHeroTitle(heroTitle, name, movie.tmdb_logo_url || "");
+            renderHeroTitle(heroTitle, name, "");
             if (heroOriginal) {
                 heroOriginal.textContent = originalName;
             }
@@ -926,7 +934,7 @@ async function loadHeroSlider() {
             if (!currentHeroMovie) {
                 return;
             }
-            renderHeroTitle(heroTitle, currentHeroMovie.name || "Phim noi bat", currentHeroMovie.tmdb_logo_url || "");
+            renderHeroTitle(heroTitle, currentHeroMovie.name || "Phim noi bat", "");
         });
 
         const getHeroMovieWithContent = async (movie) => {
@@ -1156,7 +1164,7 @@ function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim."
         return;
     }
 
-    grid.innerHTML = movies.map((movie) => createMovieCard(movie, listingType)).join("");
+    grid.innerHTML = movies.map((movie, index) => createMovieCard(movie, listingType, index)).join("");
     grid.querySelectorAll(".movie-card-link.is-disabled").forEach((link) => {
         link.addEventListener("click", (event) => {
             event.preventDefault();

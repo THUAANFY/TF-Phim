@@ -1,9 +1,13 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="vi" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${pageTitle} + ' - TF-Phim'">Chi tiết phim - TF-Phim</title>
+    <link rel="preconnect" href="https://img.phimapi.com">
+    <link rel="preconnect" href="https://img.ophim.live">
+    <link rel="preconnect" href="https://img.phimapi.com">
+    <link rel="preconnect" href="https://img.ophim.live">
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -42,8 +46,8 @@
                 <div class="detail-mobile-description" id="detail-mobile-description" hidden>
                     <div class="detail-badges detail-mobile-badges">
                         <span class="badge badge-rating"
-                              th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
-                              th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.2</span>
+                              th:if="${movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0'}"
+                              th:text="${'IMDb ' + movie['movie_rating']}">IMDb 7.2</span>
                         <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                         <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                         <span class="badge badge-lang"
@@ -74,8 +78,8 @@
 
                 <div class="detail-badges">
                     <span class="badge badge-rating"
-                          th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
-                          th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.2</span>
+                          th:if="${movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0'}"
+                          th:text="${'IMDb ' + movie['movie_rating']}">IMDb 7.2</span>
                     <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                     <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                     <span class="badge badge-lang"

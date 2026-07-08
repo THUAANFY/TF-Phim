@@ -31,6 +31,7 @@ import tfphim.tfphim.Services.MovieApiService;
 public class HomeController {
     private static final Logger log = LoggerFactory.getLogger(HomeController.class);
     private static final int EPISODES_PER_PAGE = 100;
+    private static final int MAX_LISTING_MOVIES_PER_PAGE = 24;
     private static final Map<String, Map<String, String>> CATEGORY_METADATA = Map.of(
             "phim-bo", Map.of(
                     "title", "Phim Bộ",
@@ -96,6 +97,7 @@ public class HomeController {
                 extractMovieItems(pagePayload, type),
                 extractMovieItems(movieApiService.getOphimMoviesData(type, currentPage), type, "ophim")
         );
+        movies = limitListingMovies(movies);
 
         String categoryTitle = resolveListingTitle(pagePayload, categoryMeta.getOrDefault("title", type));
         String categoryDescription = categoryMeta.getOrDefault("description", "Danh sách phim được lấy theo định dạng từ API.");
@@ -204,6 +206,7 @@ public class HomeController {
                 extractMovieItems(pagePayload),
                 extractMovieItems(movieApiService.getOphimMoviesByCountryData(slug, currentPage), "", "ophim")
         );
+        movies = limitListingMovies(movies);
         String countryTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", countryTitle);
@@ -247,6 +250,7 @@ public class HomeController {
                 extractMovieItems(pagePayload),
                 extractMovieItems(movieApiService.getOphimMoviesByGenreData(slug, currentPage), "", "ophim")
         );
+        movies = limitListingMovies(movies);
         String genreTitle = resolveListingTitle(pagePayload, slug);
 
         model.addAttribute("pageTitle", genreTitle);
@@ -619,22 +623,6 @@ public class HomeController {
         collectGalleryImages(images, seenUrls, movie.get("posters"), "movie-api");
         collectGalleryImages(images, seenUrls, movie.get("gallery"), "movie-api");
 
-        int year = resolveMovieYear(movie);
-        String title = resolveFirstMovieText(movie, "name", "title");
-        String originalTitle = resolveFirstMovieText(movie, "original_name", "origin_name", "original_title");
-        String type = resolveFirstMovieText(movie, "type", "movie_type", "category_type");
-        for (Map<String, Object> item : movieApiService.getTmdbImages(title, originalTitle, year, type)) {
-            addGalleryImage(
-                    images,
-                    seenUrls,
-                    item.get("url"),
-                    "tmdb",
-                    String.valueOf(item.getOrDefault("type", "image")),
-                    item.getOrDefault("width", 0),
-                    item.getOrDefault("height", 0)
-            );
-        }
-
         return images;
     }
 
@@ -706,7 +694,7 @@ public class HomeController {
         if (year > 0) {
             return year;
         }
-        return extractNonNegativeInt(findCategoryValue(movie, "NÄƒm"), 0);
+        return extractNonNegativeInt(findCategoryValue(movie, "Năm"), 0);
     }
 
     private void addActor(List<Map<String, Object>> actors, LinkedHashSet<String> seenNames, String rawName, String imageUrl) {
@@ -801,7 +789,7 @@ public class HomeController {
     }
 
     private List<String> extractLanguageBadges(Map<String, Object> movie) {
-        return extractLanguageBadges(String.valueOf(movie.getOrDefault("language", "")));
+        return extractLanguageBadges(resolveLanguageBadgeSource(movie));
     }
 
     private List<String> extractLanguageBadges(String language) {
@@ -813,13 +801,13 @@ public class HomeController {
         List<String> badges = new ArrayList<>();
 
         if (normalized.contains("vietsub")) {
-            badges.add("P.Đề");
+            badges.add("P.\u0110\u1ec1");
         }
         if (normalized.contains("thuyet minh")) {
             badges.add("T.Minh");
         }
         if (normalized.contains("long tieng")) {
-            badges.add("L.Tiếng");
+            badges.add("L.Ti\u1ebfng");
         }
 
         return badges;
@@ -829,23 +817,37 @@ public class HomeController {
         List<Map<String, String>> items = new ArrayList<>();
 
         for (String badge : extractLanguageBadges(language)) {
-            if ("P.Đề".equals(badge)) {
-                items.add(Map.of("label", "P.Đề", "className", "lang-sub"));
+            if ("P.\u0110\u1ec1".equals(badge)) {
+                items.add(Map.of("label", "P.\u0110\u1ec1", "className", "lang-sub"));
                 continue;
             }
             if ("T.Minh".equals(badge)) {
                 items.add(Map.of("label", "T.Minh", "className", "lang-dub"));
                 continue;
             }
-            items.add(Map.of("label", "L.Tiếng", "className", "lang-voice"));
+            items.add(Map.of("label", "L.Ti\u1ebfng", "className", "lang-voice"));
         }
 
         return items;
     }
 
+    private List<Map<String, String>> buildLanguageBadgeItems(Map<String, Object> movie) {
+        return buildLanguageBadgeItems(resolveLanguageBadgeSource(movie));
+    }
+
+    private String resolveLanguageBadgeSource(Map<String, Object> movie) {
+        return String.join(" ",
+                resolveFirstMovieText(movie, "language", "lang"),
+                resolveFirstMovieText(movie, "episode_current", "current_episode"),
+                resolveFirstMovieText(movie, "status", "episode_status")
+        ).trim();
+    }
+
     private String normalizeLanguageText(String language) {
         String normalized = Normalizer.normalize(language, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "")
+                .replace('\u0111', 'd')
+                .replace('\u0110', 'D')
                 .replace('đ', 'd')
                 .replace('Đ', 'D')
                 .toLowerCase();
@@ -859,7 +861,7 @@ public class HomeController {
 
     private String buildRuntimeText(Object runtime) {
         int minutes = extractNonNegativeInt(runtime, 0);
-        return minutes > 0 ? minutes + " phÃºt" : "";
+        return minutes > 0 ? minutes + " phút" : "";
     }
 
     private List<Map<String, Object>> extractMovieItems(Map<String, Object> payload, String listingType) {
@@ -912,6 +914,14 @@ public class HomeController {
         appendUniqueMovies(mergedMovies, seenKeys, primaryMovies);
         appendUniqueMovies(mergedMovies, seenKeys, supplementalMovies);
         return mergedMovies;
+    }
+
+    private List<Map<String, Object>> limitListingMovies(List<Map<String, Object>> movies) {
+        if (movies == null || movies.size() <= MAX_LISTING_MOVIES_PER_PAGE) {
+            return movies == null ? Collections.emptyList() : movies;
+        }
+
+        return new ArrayList<>(movies.subList(0, MAX_LISTING_MOVIES_PER_PAGE));
     }
 
     private void appendUniqueMovies(
@@ -987,7 +997,9 @@ public class HomeController {
             normalized.putIfAbsent("source", source);
         }
         normalizeMovieImages(normalized, source);
-        normalized.put("tmdb_vote_average", resolveMovieRating(normalized));
+        normalized.put("card_image_url", resolveCardImageUrl(normalized, source));
+        normalized.put("movie_rating", resolveMovieRating(normalized));
+        normalized.put("language_badges", buildLanguageBadgeItems(normalized));
         return normalized;
     }
 
@@ -1014,8 +1026,10 @@ public class HomeController {
                 mapped.putIfAbsent("source", source);
             }
             normalizeMovieImages(mapped, source);
-            mapped.put("tmdb_vote_average", resolveMovieRating(mapped));
+            mapped.put("card_image_url", resolveCardImageUrl(mapped, source));
+            mapped.put("movie_rating", resolveMovieRating(mapped));
             mapped.put("card_episode_label", resolveCardEpisodeLabel(mapped, listingType));
+            mapped.put("language_badges", buildLanguageBadgeItems(mapped));
             normalized.add(mapped);
         }
         return normalized;
@@ -1076,15 +1090,9 @@ public class HomeController {
     }
 
     private String resolveMovieRating(Map<String, Object> movie) {
-        Object directRating = movie.get("tmdb_vote_average");
+        Object directRating = movie.get("movie_rating");
         if (directRating != null && !String.valueOf(directRating).isBlank()) {
             return String.valueOf(directRating);
-        }
-
-        Map<String, Object> tmdb = safeMap(movie.get("tmdb"));
-        Object tmdbRating = tmdb.get("vote_average");
-        if (tmdbRating != null && !String.valueOf(tmdbRating).isBlank()) {
-            return String.valueOf(tmdbRating);
         }
 
         Map<String, Object> imdb = safeMap(movie.get("imdb"));
@@ -1113,6 +1121,17 @@ public class HomeController {
 
         movie.put("poster_url", posterUrl);
         movie.put("thumb_url", thumbUrl);
+    }
+
+    private String resolveCardImageUrl(Map<String, Object> movie, String source) {
+        String posterUrl = String.valueOf(movie.getOrDefault("poster_url", "")).trim();
+        String thumbUrl = String.valueOf(movie.getOrDefault("thumb_url", "")).trim();
+
+        if (isOphimSource(source)) {
+            return !thumbUrl.isBlank() ? thumbUrl : posterUrl;
+        }
+
+        return !posterUrl.isBlank() ? posterUrl : thumbUrl;
     }
 
     private String normalizeMovieImageUrl(String url, String source) {

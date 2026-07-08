@@ -104,7 +104,7 @@ html {
     z-index: 1000;
     padding: 0 2rem;
     height: 80px;
-    border-bottom: 1px solid var(--border);
+    /* border-bottom: 1px solid var(--border); */
 }
 
 body.home-page .navbar,
@@ -1397,7 +1397,7 @@ body.home-page .hero-inner {
     position: relative;
     width: 92px;
     height: 52px;
-    border-radius: 14px;
+    border-radius: 7px;
     overflow: hidden;
     border: 2px solid transparent;
     background: rgba(255,255,255,0.08);
@@ -2024,9 +2024,11 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
     position: relative;
     aspect-ratio: 2/3;
     overflow: hidden;
+    background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015));
 }
 
 .card-thumb img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -2095,7 +2097,7 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 .movie-hover-popup {
     position: fixed;
     width: min(420px, calc(100vw - 32px));
-    border-radius: 24px;
+    border-radius: 10px;
     overflow: hidden;
     background: linear-gradient(180deg, #32364b 0%, #292d3d 100%);
     border: 1px solid rgba(255,255,255,0.12);
@@ -3361,8 +3363,8 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 }
 
 .detail-tag:hover {
-    background: rgba(212,160,23,0.14);
-    border-color: rgba(212,160,23,0.45);
+    background: rgba(23, 212, 92, 0.089);
+    border-color: rgba(23, 212, 73, 0.45);
 }
 
 .detail-description h3 {
@@ -3435,7 +3437,7 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 
 .episode-list {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 0.75rem;
 }
 
@@ -4446,7 +4448,7 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 
 .watch-content-grid {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+    grid-template-columns: minmax(0, 2.7fr) minmax(300px, 1fr);
     gap: 1rem;
     align-items: start;
 }
@@ -4472,7 +4474,7 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 }
 
 .watch-actors-grid {
-    grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
     gap: 1.4rem 0.95rem;
     padding: 0 1rem 0.2rem;
 }
@@ -5392,9 +5394,7 @@ box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
     }
 }
 
-.watch-panel .episode-list,
-.detail-section .episode-list,
-.detail-episode-list {
+.watch-panel .episode-list {
     grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 

@@ -26,9 +26,6 @@ public class MovieApiController {
             @RequestParam(defaultValue = "1") int page
     ) {
         try {
-            if ("phim-moi".equals(type)) {
-                return ResponseEntity.ok(movieApiService.getMoviesDataWithTmdbLogos(type, page, 6));
-            }
             return ResponseEntity.ok(movieApiService.getMovies(type, page));
         } catch (org.springframework.web.client.RestClientException ex) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)

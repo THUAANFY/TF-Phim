@@ -71,7 +71,7 @@
                                   data-time=${movie['time']},
                                   data-status=${movie['status']},
                                   data-trailer-url=${movie['trailer_url']},
-                                  data-rating=${movie['tmdb_vote_average']}">
+                                  data-rating=${movie['movie_rating']}">
                     <div class="card-thumb">
                         <img th:src="${movie['poster_url'] != null and movie['poster_url'] != '' ? movie['poster_url'] : movie['thumb_url']}"
                              th:alt="${movie['name']}"
@@ -87,11 +87,11 @@
                               th:if="${movie['card_episode_label'] != null and movie['card_episode_label'] != ''}"
                               th:text="${movie['card_episode_label']}">HO&#192;N T&#7844;T</span>
                         <div class="card-thumb-badges"
-                             th:if="${movie['year'] != null or (movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0')}">
+                             th:if="${movie['year'] != null or (movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0')}">
                             <span class="badge badge-year" th:if="${movie['year'] != null}" th:text="${movie['year']}">2026</span>
                             <span class="badge badge-rating"
-                                  th:if="${movie['tmdb_vote_average'] != null and movie['tmdb_vote_average'] != '' and movie['tmdb_vote_average'] != '0' and movie['tmdb_vote_average'] != '0.0'}"
-                                  th:text="${'IMDb ' + movie['tmdb_vote_average']}">IMDb 7.2</span>
+                                  th:if="${movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0'}"
+                                  th:text="${'IMDb ' + movie['movie_rating']}">IMDb 7.2</span>
                         </div>
                     </div>
 
