@@ -1,4 +1,8 @@
 const API_BASE = "/api/movies";
+const KK_IMAGE_BASE_URL = "https://img.phimapi.com/";
+const KK_MOVIE_IMAGE_BASE_URL = `${KK_IMAGE_BASE_URL}uploads/movies/`;
+const OPHIM_IMAGE_BASE_URL = "https://img.ophim.live/";
+const OPHIM_MOVIE_IMAGE_BASE_URL = `${OPHIM_IMAGE_BASE_URL}uploads/movies/`;
 
 const MOVIE_TYPES = {
     "phim-moi": "phim-moi",
@@ -388,23 +392,24 @@ function getMovieLanguageBadgeSource(movie) {
         .join(" ");
 }
 function getMovieImage(movie) {
-    const cardImage = resolveMovieImageUrl(movie?.card_image_url);
+    const source = movie?.source || "";
+    const cardImage = resolveMovieImageUrl(movie?.card_image_url, source);
     if (cardImage) {
         return cardImage;
     }
 
-    if (movie?.source === "ophim") {
-        return resolveMovieImageUrl(movie.thumb_url)
-            || resolveMovieImageUrl(movie.poster_url)
+    if (isOphimSource(source)) {
+        return resolveMovieImageUrl(movie.thumb_url, source)
+            || resolveMovieImageUrl(movie.poster_url, source)
             || "https://via.placeholder.com/600x900?text=No+Image";
     }
 
-    return resolveMovieImageUrl(movie.poster_url)
-        || resolveMovieImageUrl(movie.thumb_url)
+    return resolveMovieImageUrl(movie.poster_url, source)
+        || resolveMovieImageUrl(movie.thumb_url, source)
         || "https://via.placeholder.com/600x900?text=No+Image";
 }
 
-function resolveMovieImageUrl(url) {
+function resolveMovieImageUrl(url, source = "") {
     const raw = String(url || "").trim();
     if (!raw) {
         return "";
@@ -420,16 +425,20 @@ function resolveMovieImageUrl(url) {
 
     const normalizedPath = raw.startsWith("/") ? raw.slice(1) : raw;
     if (normalizedPath.startsWith("uploads/movies/")) {
-        return `https://img.ophim.live/${normalizedPath}`;
+        return `${isOphimSource(source) ? OPHIM_IMAGE_BASE_URL : KK_IMAGE_BASE_URL}${normalizedPath}`;
     }
     if (normalizedPath.startsWith("upload/")) {
-        return `https://img.phimapi.com/${normalizedPath}`;
+        return `${KK_IMAGE_BASE_URL}${normalizedPath}`;
     }
     if (looksLikeImageFile(normalizedPath)) {
-        return `https://img.ophim.live/uploads/movies/${normalizedPath}`;
+        return `${isOphimSource(source) ? OPHIM_MOVIE_IMAGE_BASE_URL : KK_MOVIE_IMAGE_BASE_URL}${normalizedPath}`;
     }
 
     return raw;
+}
+
+function isOphimSource(source) {
+    return String(source || "").trim().toLowerCase() === "ophim";
 }
 
 function looksLikeImageFile(path) {
@@ -825,7 +834,7 @@ function renderHeroTitle(heroTitle, movieName, logoUrl) {
 
 function renderHeroThumbs(movies, activeIndex) {
     return movies.map((movie, index) => {
-        const thumb = resolveMovieImageUrl(movie.thumb_url) || resolveMovieImageUrl(movie.poster_url) || "https://via.placeholder.com/160x90?text=No+Image";
+        const thumb = resolveMovieImageUrl(movie.thumb_url, movie.source) || resolveMovieImageUrl(movie.poster_url, movie.source) || "https://via.placeholder.com/160x90?text=No+Image";
         const name = movie.name || "Phim nổi bật";
         return `
             <button type="button" class="hero-thumb ${index === activeIndex ? "is-active" : ""}" data-hero-index="${index}" aria-label="${escapeHtml(name)}">
@@ -883,8 +892,8 @@ async function loadHeroSlider() {
         `;
 
         const getHeroImage = (movie) => (
-            resolveMovieImageUrl(movie?.thumb_url)
-            || resolveMovieImageUrl(movie?.poster_url)
+            resolveMovieImageUrl(movie?.thumb_url, movie?.source)
+            || resolveMovieImageUrl(movie?.poster_url, movie?.source)
             || "https://via.placeholder.com/1280x720?text=No+Image"
         );
 
@@ -1252,7 +1261,7 @@ function bindMovieHoverPopup(root = document) {
         const setPopupContent = (movie) => {
             const name = movie.name || "Khong ro";
             const originalName = getMovieOriginalName(movie);
-            const image = resolveMovieImageUrl(movie.thumb_url) || resolveMovieImageUrl(movie.poster_url) || "https://via.placeholder.com/600x900?text=No+Image";
+            const image = resolveMovieImageUrl(movie.thumb_url, movie.source) || resolveMovieImageUrl(movie.poster_url, movie.source) || "https://via.placeholder.com/600x900?text=No+Image";
             const rating = getMovieRating(movie);
             const quality = movie.quality || "";
             const ageRating = getMovieAgeRating(movie);

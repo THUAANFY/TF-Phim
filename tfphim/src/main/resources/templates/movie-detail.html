@@ -59,7 +59,7 @@
                         <span th:each="category : ${categories}" class="detail-tag" th:text="${category.name}">Hành động</span>
                     </div>
                     <h3>Giới thiệu:</h3>
-                    <p th:text="${movie['content'] ?: movie['description'] ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
+                    <p th:text="${movieDescription ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
                     <div class="detail-meta-list detail-meta-list--intro detail-mobile-meta" aria-label="Thông tin phim">
                         <div class="detail-meta-row">
                             <span class="detail-meta-label">Thời lượng:</span>
@@ -102,7 +102,7 @@
 
                 <div class="detail-description">
                     <h3>Giới thiệu:</h3>
-                    <p th:text="${movie['content'] ?: movie['description'] ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
+                    <p th:text="${movieDescription ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
                 </div>
 
                 <div class="detail-meta-list detail-meta-list--intro" aria-label="Thông tin phim">

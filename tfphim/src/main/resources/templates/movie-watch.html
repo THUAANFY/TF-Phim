@@ -156,7 +156,7 @@
                         </a>
                     </div>
 
-                    <p class="watch-description" th:text="${movie['content'] ?: movie['description'] ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
+                    <p class="watch-description" th:text="${movieDescription ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
 
                     <div class="watch-info-actions">
                         <a class="watch-detail-link" th:href="@{/phim/{slug}(slug=${movie['slug']})}">
@@ -501,4 +501,3 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
-

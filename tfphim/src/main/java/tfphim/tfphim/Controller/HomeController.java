@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.view.RedirectView;
+import org.springframework.web.util.HtmlUtils;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -32,6 +33,10 @@ public class HomeController {
     private static final Logger log = LoggerFactory.getLogger(HomeController.class);
     private static final int EPISODES_PER_PAGE = 100;
     private static final int MAX_LISTING_MOVIES_PER_PAGE = 24;
+    private static final String KK_IMAGE_BASE_URL = "https://img.phimapi.com/";
+    private static final String KK_MOVIE_IMAGE_BASE_URL = KK_IMAGE_BASE_URL + "uploads/movies/";
+    private static final String OPHIM_IMAGE_BASE_URL = "https://img.ophim.live/";
+    private static final String OPHIM_MOVIE_IMAGE_BASE_URL = OPHIM_IMAGE_BASE_URL + "uploads/movies/";
     private static final Map<String, Map<String, String>> CATEGORY_METADATA = Map.of(
             "phim-bo", Map.of(
                     "title", "Phim Bộ",
@@ -289,6 +294,7 @@ public class HomeController {
 
             model.addAttribute("pageTitle", movie.getOrDefault("name", "Chi tiết phim"));
             model.addAttribute("movie", movie);
+            model.addAttribute("movieDescription", resolveMovieDescription(movie));
             model.addAttribute("categories", extractCategories(movie));
             model.addAttribute("actors", extractActors(movie));
             model.addAttribute("galleryImages", buildGalleryImages(movie));
@@ -348,12 +354,14 @@ public class HomeController {
             if (selectedEpisode.isEmpty()) {
                 model.addAttribute("pageTitle", movie.getOrDefault("name", "Xem phim"));
                 model.addAttribute("movie", movie);
+                model.addAttribute("movieDescription", resolveMovieDescription(movie));
                 model.addAttribute("errorMessage", "Phim này hiện chưa có nguồn phát khả dụng.");
                 return "movie-watch";
             }
 
             model.addAttribute("pageTitle", movie.getOrDefault("name", "Xem phim"));
             model.addAttribute("movie", movie);
+            model.addAttribute("movieDescription", resolveMovieDescription(movie));
             model.addAttribute("episodes", episodes);
             model.addAttribute("showServerCards", showServerCards);
             model.addAttribute("detailServerCards", buildDetailServerCards(
@@ -723,6 +731,21 @@ public class HomeController {
         }
 
         return "Đang cập nhật";
+    }
+
+    private String resolveMovieDescription(Map<String, Object> movie) {
+        return cleanMovieDescription(resolveFirstMovieText(movie, "content", "description", "excerpt"));
+    }
+
+    private String cleanMovieDescription(String value) {
+        String unescaped = HtmlUtils.htmlUnescape(String.valueOf(value == null ? "" : value));
+        return unescaped
+                .replaceAll("(?is)<br\\s*/?>", " ")
+                .replaceAll("(?is)</p\\s*>", " ")
+                .replaceAll("(?is)<[^>]+>", " ")
+                .replace('\u00a0', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private String normalizeMovieTextValue(Object value) {
@@ -1149,13 +1172,13 @@ public class HomeController {
 
         String normalizedPath = trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
         if (normalizedPath.startsWith("uploads/movies/")) {
-            return "https://img.ophim.live/" + normalizedPath;
+            return (isOphimSource(source) ? OPHIM_IMAGE_BASE_URL : KK_IMAGE_BASE_URL) + normalizedPath;
         }
         if (normalizedPath.startsWith("upload/")) {
-            return "https://img.phimapi.com/" + normalizedPath;
+            return KK_IMAGE_BASE_URL + normalizedPath;
         }
-        if (isOphimSource(source) && looksLikeImageFile(normalizedPath)) {
-            return "https://img.ophim.live/uploads/movies/" + normalizedPath;
+        if (looksLikeImageFile(normalizedPath)) {
+            return (isOphimSource(source) ? OPHIM_MOVIE_IMAGE_BASE_URL : KK_MOVIE_IMAGE_BASE_URL) + normalizedPath;
         }
 
         return trimmed;
