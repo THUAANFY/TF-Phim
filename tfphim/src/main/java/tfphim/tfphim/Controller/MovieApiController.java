@@ -60,6 +60,18 @@ public class MovieApiController {
         }
     }
 
+    @GetMapping(value = "/tmdb/logo", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> getTmdbMovieLogo(
+            @RequestParam(defaultValue = "") String name,
+            @RequestParam(defaultValue = "") String originalName,
+            @RequestParam(defaultValue = "") String year,
+            @RequestParam(defaultValue = "") String tmdbId,
+            @RequestParam(defaultValue = "") String tmdbType,
+            @RequestParam(defaultValue = "") String imdbId
+    ) {
+        return ResponseEntity.ok(movieApiService.getTmdbMovieLogo(name, originalName, year, tmdbId, tmdbType, imdbId));
+    }
+
     @GetMapping(value = "/{slug}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> getMovieDetail(@PathVariable String slug) {
         try {

@@ -45,9 +45,12 @@
 
                 <div class="detail-mobile-description" id="detail-mobile-description" hidden>
                     <div class="detail-badges detail-mobile-badges">
-                        <span class="badge badge-rating"
-                              th:if="${movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0'}"
-                              th:text="${'IMDb ' + movie['movie_rating']}">IMDb 7.2</span>
+                        <span class="badge badge-rating badge-rating--imdb"
+                              th:if="${movie['movie_imdb_rating'] != null and movie['movie_imdb_rating'] != '' and movie['movie_imdb_rating'] != '0' and movie['movie_imdb_rating'] != '0.0'}"
+                              th:text="${'IMDb ' + movie['movie_imdb_rating']}">IMDb 7.2</span>
+                        <span class="badge badge-rating badge-rating--tmdb"
+                              th:if="${movie['movie_tmdb_rating'] != null and movie['movie_tmdb_rating'] != '' and movie['movie_tmdb_rating'] != '0' and movie['movie_tmdb_rating'] != '0.0'}"
+                              th:text="${'TMDB ' + movie['movie_tmdb_rating']}">TMDB 7.2</span>
                         <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                         <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                         <span class="badge badge-lang"
@@ -77,9 +80,12 @@
                 </div>
 
                 <div class="detail-badges">
-                    <span class="badge badge-rating"
-                          th:if="${movie['movie_rating'] != null and movie['movie_rating'] != '' and movie['movie_rating'] != '0' and movie['movie_rating'] != '0.0'}"
-                          th:text="${'IMDb ' + movie['movie_rating']}">IMDb 7.2</span>
+                    <span class="badge badge-rating badge-rating--imdb"
+                          th:if="${movie['movie_imdb_rating'] != null and movie['movie_imdb_rating'] != '' and movie['movie_imdb_rating'] != '0' and movie['movie_imdb_rating'] != '0.0'}"
+                          th:text="${'IMDb ' + movie['movie_imdb_rating']}">IMDb 7.2</span>
+                    <span class="badge badge-rating badge-rating--tmdb"
+                          th:if="${movie['movie_tmdb_rating'] != null and movie['movie_tmdb_rating'] != '' and movie['movie_tmdb_rating'] != '0' and movie['movie_tmdb_rating'] != '0.0'}"
+                          th:text="${'TMDB ' + movie['movie_tmdb_rating']}">TMDB 7.2</span>
                     <span class="badgee fhd" th:text="${movie['quality']} ?: 'HD'">HD</span>
                     <span class="badge ep" th:if="${movie['current_episode']}" th:text="${movie['current_episode']}">FULL</span>
                     <span class="badge badge-lang"
@@ -352,12 +358,14 @@
                     <h2 class="detail-gallery-title">Diễn viên</h2>
                     <div class="detail-actors-grid" th:if="${!#lists.isEmpty(actors)}">
                         <div class="detail-actor-card" th:each="actor : ${actors}">
-                            <div class="detail-actor-avatar">
+                            <div class="detail-actor-avatar"
+                                 th:classappend="${actor['image_url'] != null and actor['image_url'] != '' ? ' detail-actor-avatar--photo' : ' detail-actor-avatar--fallback'}">
                                 <img th:src="${actor['image_url'] != null and actor['image_url'] != '' ? actor['image_url'] : '/uploads/Images/avatar.png'}"
                                      th:alt="${actor['name']}"
                                      loading="lazy"
                                      decoding="async"
-                                     fetchpriority="low">
+                                     fetchpriority="low"
+                                     onerror="this.onerror=null;this.src='/uploads/Images/avatar.png';this.closest('.detail-actor-avatar').classList.add('detail-actor-avatar--fallback');">
                             </div>
                             <h3 th:text="${actor['name']}">Tên diễn viên</h3>
                         </div>

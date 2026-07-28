@@ -296,7 +296,7 @@ public class HomeController {
             model.addAttribute("movie", movie);
             model.addAttribute("movieDescription", resolveMovieDescription(movie));
             model.addAttribute("categories", extractCategories(movie));
-            model.addAttribute("actors", extractActors(movie));
+            model.addAttribute("actors", enrichActorsWithTmdbImages(movie, extractActors(movie)));
             model.addAttribute("galleryImages", buildGalleryImages(movie));
             model.addAttribute("languageBadges", extractLanguageBadges(movie));
             model.addAttribute("releaseYear", findCategoryValue(movie, "Năm"));
@@ -378,7 +378,7 @@ public class HomeController {
             model.addAttribute("selectedEpisode", selectedEpisode);
             model.addAttribute("languageBadges", extractLanguageBadges(movie));
             model.addAttribute("categories", extractCategories(movie));
-            model.addAttribute("actors", extractActors(movie));
+            model.addAttribute("actors", enrichActorsWithTmdbImages(movie, extractActors(movie)));
             model.addAttribute("releaseYear", findCategoryValue(movie, "Năm"));
             model.addAttribute("selectedServer", String.valueOf(selectedEpisode.getOrDefault("server_name", "")));
             model.addAttribute("selectedServerLabel", buildServerDisplayLabel(
@@ -618,6 +618,64 @@ public class HomeController {
         return actors;
     }
 
+    private List<Map<String, Object>> enrichActorsWithTmdbImages(Map<String, Object> movie, List<Map<String, Object>> actors) {
+        if (actors.isEmpty()) {
+            return actors;
+        }
+
+        List<String> actorNames = new ArrayList<>();
+        for (Map<String, Object> actor : actors) {
+            String actorName = normalizeMovieTextValue(actor.get("name"));
+            if (!actorName.isBlank()) {
+                actorNames.add(actorName);
+            }
+        }
+        if (actorNames.isEmpty()) {
+            return actors;
+        }
+
+        String name = resolveFirstMovieText(movie, "name");
+        String originalName = resolveFirstMovieText(movie, "original_name", "origin_name");
+        String year = resolveFirstMovieText(movie, "year", "release_year");
+        if (year.isBlank()) {
+            year = findCategoryValue(movie, "NÄƒm");
+        }
+        String tmdbId = resolveExternalMovieText(movie, "tmdb", "id", "tmdb_id");
+        String tmdbType = resolveExternalMovieText(movie, "tmdb", "type", "tmdb_type");
+        if (tmdbType.isBlank()) {
+            tmdbType = resolveFirstMovieText(movie, "type", "movie_type", "category_type");
+        }
+        String imdbId = resolveExternalMovieText(movie, "imdb", "id", "imdb_id");
+
+        Map<String, String> tmdbActorImages = movieApiService.getTmdbActorImages(
+                name,
+                originalName,
+                year,
+                tmdbId,
+                tmdbType,
+                imdbId,
+                actorNames
+        );
+        if (tmdbActorImages.isEmpty()) {
+            return actors;
+        }
+
+        List<Map<String, Object>> enrichedActors = new ArrayList<>();
+        for (Map<String, Object> actor : actors) {
+            String actorName = normalizeMovieTextValue(actor.get("name"));
+            String tmdbImageUrl = tmdbActorImages.getOrDefault(actorName, "");
+            if (tmdbImageUrl.isBlank()) {
+                enrichedActors.add(actor);
+                continue;
+            }
+
+            Map<String, Object> enrichedActor = new java.util.HashMap<>(actor);
+            enrichedActor.put("image_url", tmdbImageUrl);
+            enrichedActors.add(enrichedActor);
+        }
+        return enrichedActors;
+    }
+
     private List<Map<String, Object>> buildGalleryImages(Map<String, Object> movie) {
         List<Map<String, Object>> images = new ArrayList<>();
         LinkedHashSet<String> seenUrls = new LinkedHashSet<>();
@@ -630,8 +688,55 @@ public class HomeController {
         collectGalleryImages(images, seenUrls, movie.get("backdrops"), "movie-api");
         collectGalleryImages(images, seenUrls, movie.get("posters"), "movie-api");
         collectGalleryImages(images, seenUrls, movie.get("gallery"), "movie-api");
+        collectTmdbGalleryImages(images, seenUrls, movie);
 
         return images;
+    }
+
+    private void collectTmdbGalleryImages(List<Map<String, Object>> images, LinkedHashSet<String> seenUrls, Map<String, Object> movie) {
+        String name = resolveFirstMovieText(movie, "name");
+        String originalName = resolveFirstMovieText(movie, "original_name", "origin_name");
+        String year = resolveFirstMovieText(movie, "year", "release_year");
+        if (year.isBlank()) {
+            year = findCategoryValue(movie, "Năm");
+        }
+
+        String tmdbId = resolveExternalMovieText(movie, "tmdb", "id", "tmdb_id");
+        String tmdbType = resolveExternalMovieText(movie, "tmdb", "type", "tmdb_type");
+        if (tmdbType.isBlank()) {
+            tmdbType = resolveFirstMovieText(movie, "type", "movie_type", "category_type");
+        }
+        String imdbId = resolveExternalMovieText(movie, "imdb", "id", "imdb_id");
+
+        for (Map<String, Object> tmdbImage : movieApiService.getTmdbGalleryImages(
+                name,
+                originalName,
+                year,
+                tmdbId,
+                tmdbType,
+                imdbId,
+                10
+        )) {
+            addGalleryImage(
+                    images,
+                    seenUrls,
+                    tmdbImage.get("url"),
+                    "tmdb",
+                    String.valueOf(tmdbImage.getOrDefault("type", "image")),
+                    tmdbImage.getOrDefault("width", 0),
+                    tmdbImage.getOrDefault("height", 0)
+            );
+        }
+    }
+
+    private String resolveExternalMovieText(Map<String, Object> movie, String groupKey, String nestedKey, String directKey) {
+        String directValue = resolveFirstMovieText(movie, directKey);
+        if (!directValue.isBlank()) {
+            return directValue;
+        }
+
+        Map<String, Object> group = safeMap(movie.get(groupKey));
+        return normalizeMovieTextValue(group.get(nestedKey));
     }
 
     private void collectGalleryImages(List<Map<String, Object>> images, LinkedHashSet<String> seenUrls, Object value, String source) {
@@ -1021,7 +1126,7 @@ public class HomeController {
         }
         normalizeMovieImages(normalized, source);
         normalized.put("card_image_url", resolveCardImageUrl(normalized, source));
-        normalized.put("movie_rating", resolveMovieRating(normalized));
+        normalizeMovieRatings(normalized);
         normalized.put("language_badges", buildLanguageBadgeItems(normalized));
         return normalized;
     }
@@ -1050,7 +1155,7 @@ public class HomeController {
             }
             normalizeMovieImages(mapped, source);
             mapped.put("card_image_url", resolveCardImageUrl(mapped, source));
-            mapped.put("movie_rating", resolveMovieRating(mapped));
+            normalizeMovieRatings(mapped);
             mapped.put("card_episode_label", resolveCardEpisodeLabel(mapped, listingType));
             mapped.put("language_badges", buildLanguageBadgeItems(mapped));
             normalized.add(mapped);
@@ -1112,20 +1217,66 @@ public class HomeController {
         return "";
     }
 
-    private String resolveMovieRating(Map<String, Object> movie) {
-        Object directRating = movie.get("movie_rating");
-        if (directRating != null && !String.valueOf(directRating).isBlank()) {
-            return String.valueOf(directRating);
+    private void normalizeMovieRatings(Map<String, Object> movie) {
+        String imdbRating = normalizeRatingValue(resolveMovieImdbRating(movie));
+        String tmdbRating = normalizeRatingValue(resolveMovieTmdbRating(movie));
+
+        movie.put("movie_imdb_rating", imdbRating);
+        movie.put("movie_tmdb_rating", tmdbRating);
+        movie.put("movie_rating", !imdbRating.isBlank() ? imdbRating : tmdbRating);
+    }
+
+    private String resolveMovieImdbRating(Map<String, Object> movie) {
+        String rating = resolveFirstMovieText(
+                movie,
+                "movie_imdb_rating",
+                "imdb_vote_average",
+                "imdb_rating",
+                "rating_imdb",
+                "imdb_score"
+        );
+        if (!rating.isBlank()) {
+            return rating;
         }
 
         Map<String, Object> imdb = safeMap(movie.get("imdb"));
-        Object imdbRating = imdb.get("vote_average");
-        if (imdbRating != null && !String.valueOf(imdbRating).isBlank()) {
-            return String.valueOf(imdbRating);
+        rating = resolveFirstMovieText(imdb, "vote_average", "rating", "score");
+        if (!rating.isBlank()) {
+            return rating;
         }
 
-        Object rating = movie.get("rating");
-        return rating == null ? "" : String.valueOf(rating);
+        return resolveFirstMovieText(movie, "movie_rating", "rating");
+    }
+
+    private String resolveMovieTmdbRating(Map<String, Object> movie) {
+        String rating = resolveFirstMovieText(
+                movie,
+                "movie_tmdb_rating",
+                "tmdb_vote_average",
+                "tmdb_rating",
+                "rating_tmdb",
+                "tmdb_score"
+        );
+        if (!rating.isBlank()) {
+            return rating;
+        }
+
+        Map<String, Object> tmdb = safeMap(movie.get("tmdb"));
+        return resolveFirstMovieText(tmdb, "vote_average", "rating", "score");
+    }
+
+    private String normalizeRatingValue(String value) {
+        String rating = normalizeMovieTextValue(value);
+        if (rating.isBlank() || "null".equalsIgnoreCase(rating) || "n/a".equalsIgnoreCase(rating)) {
+            return "";
+        }
+
+        try {
+            double numericRating = Double.parseDouble(rating.replace(",", "."));
+            return numericRating > 0 ? rating : "";
+        } catch (Exception ignored) {
+            return rating;
+        }
     }
 
     private String normalizeMovieImageUrl(String url) {

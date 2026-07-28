@@ -3,6 +3,7 @@ const KK_IMAGE_BASE_URL = "https://img.phimapi.com/";
 const KK_MOVIE_IMAGE_BASE_URL = `${KK_IMAGE_BASE_URL}uploads/movies/`;
 const OPHIM_IMAGE_BASE_URL = "https://img.ophim.live/";
 const OPHIM_MOVIE_IMAGE_BASE_URL = `${OPHIM_IMAGE_BASE_URL}uploads/movies/`;
+const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
 
 const MOVIE_TYPES = {
     "phim-moi": "phim-moi",
@@ -450,6 +451,85 @@ function looksLikeImageFile(path) {
         || lowerPath.endsWith(".avif");
 }
 
+function resolveMovieLogoUrl(url, source = "") {
+    const raw = String(url || "").trim();
+    if (!raw || raw.toLowerCase() === "null" || raw === "[object Object]") {
+        return "";
+    }
+
+    if (raw.startsWith("/") && !raw.startsWith("/uploads/") && looksLikeImageFile(raw)) {
+        return `${TMDB_IMAGE_BASE_URL}${raw}`;
+    }
+
+    return resolveMovieImageUrl(raw, source);
+}
+
+function getMovieLogoUrl(movie) {
+    const candidates = [
+        movie?.logo_url,
+        movie?.logoUrl,
+        movie?.movie_logo,
+        movie?.movieLogo,
+        movie?.title_logo,
+        movie?.titleLogo,
+        movie?.clear_logo,
+        movie?.clearLogo,
+        movie?.clearlogo,
+        movie?.tmdb_logo_url,
+        movie?.tmdbLogoUrl,
+        movie?.tmdb?.logo_url,
+        movie?.tmdb?.logoUrl,
+        movie?.tmdb?.logo_path
+    ];
+
+    const logo = movie?.logo;
+    if (logo && typeof logo === "object") {
+        candidates.push(logo.url, logo.src, logo.logo_url, logo.logoUrl, logo.file_path, logo.filePath);
+    } else {
+        candidates.push(logo);
+    }
+
+    const images = movie?.images;
+    if (images && typeof images === "object" && !Array.isArray(images)) {
+        candidates.push(images.logo, images.logo_url, images.logoUrl, images.clearlogo, images.clear_logo);
+        if (Array.isArray(images.logos)) {
+            images.logos.forEach((item) => {
+                if (item && typeof item === "object") {
+                    candidates.push(item.url, item.src, item.file_path, item.filePath);
+                } else {
+                    candidates.push(item);
+                }
+            });
+        }
+    }
+
+    for (const candidate of candidates) {
+        const logoUrl = resolveMovieLogoUrl(candidate, movie?.source);
+        if (logoUrl) {
+            return logoUrl;
+        }
+    }
+
+    return "";
+}
+
+function preloadImage(url) {
+    const imageUrl = String(url || "").trim();
+    if (!imageUrl) {
+        return Promise.resolve("");
+    }
+
+    return new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve(imageUrl);
+        image.onerror = () => resolve("");
+        image.src = imageUrl;
+        if (image.decode) {
+            image.decode().then(() => resolve(imageUrl)).catch(() => {});
+        }
+    });
+}
+
 function getMovieOriginalName(movie) {
     return movie.original_name || movie.origin_name || "";
 }
@@ -487,17 +567,124 @@ function getMovieYear(movie) {
         || "";
 }
 
+async function fetchTmdbMovieLogo(movie, cache = new Map()) {
+    const directLogoUrl = getMovieLogoUrl(movie);
+    if (directLogoUrl) {
+        return directLogoUrl;
+    }
+
+    const name = String(movie?.name || "").trim();
+    const originalName = String(getMovieOriginalName(movie) || "").trim();
+    const year = String(getMovieYear(movie) || "").trim();
+    const tmdbId = String(movie?.tmdb?.id || movie?.tmdb_id || "").trim();
+    const tmdbType = String(movie?.tmdb?.type || movie?.tmdb_type || movie?.type || movie?.movie_type || "").trim();
+    const imdbId = String(movie?.imdb?.id || movie?.imdb_id || "").trim();
+    const cacheKey = [name, originalName, year, tmdbId, tmdbType, imdbId].join("|").toLowerCase();
+
+    if (!name && !originalName && !tmdbId && !imdbId) {
+        return "";
+    }
+    if (cache.has(cacheKey)) {
+        return cache.get(cacheKey);
+    }
+
+    const params = new URLSearchParams();
+    if (name) {
+        params.set("name", name);
+    }
+    if (originalName) {
+        params.set("originalName", originalName);
+    }
+    if (year) {
+        params.set("year", year);
+    }
+    if (tmdbId) {
+        params.set("tmdbId", tmdbId);
+    }
+    if (tmdbType) {
+        params.set("tmdbType", tmdbType);
+    }
+    if (imdbId) {
+        params.set("imdbId", imdbId);
+    }
+
+    const request = getJson(`${API_BASE}/tmdb/logo?${params.toString()}`)
+        .then((payload) => {
+            const logoUrl = resolveMovieLogoUrl(payload?.logoUrl, movie?.source);
+            cache.set(cacheKey, logoUrl);
+            return logoUrl;
+        })
+        .catch((error) => {
+            cache.delete(cacheKey);
+            throw error;
+        });
+
+    cache.set(cacheKey, request);
+    return request;
+}
+
 function getMovieRating(movie) {
-    const rating = movie.movie_rating
-        || movie.imdb?.vote_average
-        || movie.rating
-        || "";
-    return String(rating || "").trim();
+    return getMovieImdbRating(movie) || getMovieTmdbRating(movie) || String(movie?.rating || "").trim();
+}
+
+function getMovieImdbRating(movie) {
+    return firstVisibleRating([
+        movie?.movie_imdb_rating,
+        movie?.imdb_vote_average,
+        movie?.imdb_rating,
+        movie?.rating_imdb,
+        movie?.imdb_score,
+        movie?.imdb?.vote_average,
+        movie?.imdb?.rating,
+        movie?.imdb?.score,
+        movie?.ratings?.imdb,
+        movie?.movie_rating
+    ]);
+}
+
+function getMovieTmdbRating(movie) {
+    return firstVisibleRating([
+        movie?.movie_tmdb_rating,
+        movie?.tmdb_vote_average,
+        movie?.tmdb_rating,
+        movie?.rating_tmdb,
+        movie?.tmdb_score,
+        movie?.tmdb?.vote_average,
+        movie?.tmdb?.rating,
+        movie?.tmdb?.score,
+        movie?.ratings?.tmdb
+    ]);
+}
+
+function firstVisibleRating(values) {
+    for (const value of values) {
+        const rating = String(value || "").trim();
+        if (hasVisibleRating(rating)) {
+            return rating;
+        }
+    }
+
+    return "";
 }
 
 function hasVisibleRating(rating) {
     const normalized = String(rating || "").trim();
-    return Boolean(normalized) && normalized !== "0" && normalized !== "0.0";
+    if (!normalized || normalized.toLowerCase() === "null" || normalized.toLowerCase() === "n/a") {
+        return false;
+    }
+
+    const numericRating = Number(normalized.replace(",", "."));
+    return Number.isFinite(numericRating) ? numericRating > 0 : true;
+}
+
+function createRatingBadges(movie, badgeClass = "badge") {
+    const imdbRating = getMovieImdbRating(movie);
+    const tmdbRating = getMovieTmdbRating(movie);
+
+    return [
+        imdbRating ? `<span class="${badgeClass} badge-rating badge-rating--imdb">IMDb ${escapeHtml(imdbRating)}</span>` : "",
+        tmdbRating ? `<span class="${badgeClass} badge-rating badge-rating--tmdb">TMDB ${escapeHtml(tmdbRating)}</span>` : ""
+    ].filter(Boolean).join("");
 }
 
 function getMovieDuration(movie) {
@@ -583,7 +770,9 @@ function createMovieDatasetAttributes(movie) {
         ["category", getMovieCategoryLine(movie)],
         ["status", getMovieStatusLine(movie)],
         ["trailer-url", movie.trailer_url || ""],
-        ["rating", getMovieRating(movie)]
+        ["rating", getMovieRating(movie)],
+        ["imdb-rating", getMovieImdbRating(movie)],
+        ["tmdb-rating", getMovieTmdbRating(movie)]
     ]
         .filter(([, value]) => String(value || "").trim() !== "")
         .map(([key, value]) => `data-${key}="${escapeHtml(value)}"`)
@@ -608,7 +797,9 @@ function readMovieDataFromCard(card) {
         category: card.dataset.category || "",
         status: card.dataset.status || "",
         trailer_url: card.dataset.trailerUrl || "",
-        movie_rating: card.dataset.rating || ""
+        movie_rating: card.dataset.rating || "",
+        movie_imdb_rating: card.dataset.imdbRating || "",
+        movie_tmdb_rating: card.dataset.tmdbRating || ""
     };
 }
 
@@ -632,7 +823,9 @@ function mergeMovieData(baseMovie, detailMovie) {
         category: detailMovie.category || baseMovie.category,
         status: getMovieStatusLine(detailMovie) || getMovieStatusLine(baseMovie),
         trailer_url: detailMovie.trailer_url || baseMovie.trailer_url,
-        movie_rating: getMovieRating(detailMovie) || getMovieRating(baseMovie)
+        movie_rating: getMovieRating(detailMovie) || getMovieRating(baseMovie),
+        movie_imdb_rating: getMovieImdbRating(detailMovie) || getMovieImdbRating(baseMovie),
+        movie_tmdb_rating: getMovieTmdbRating(detailMovie) || getMovieTmdbRating(baseMovie)
     };
 }
 
@@ -722,7 +915,7 @@ function createMovieCard(movie, listingType = "", index = 0) {
     const episode = getCardEpisodeLabel(movie, listingType);
     const quality = movie.quality || "HD";
     const year = getMovieYear(movie);
-    const rating = getMovieRating(movie);
+    const ratingBadges = createRatingBadges(movie);
     const slug = movie.slug || "";
     const languageBadges = getLanguageBadges(getMovieLanguageBadgeSource(movie));
     const href = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
@@ -745,10 +938,10 @@ function createMovieCard(movie, listingType = "", index = 0) {
                     </div>
                     <span class="badge hd">${escapeHtml(quality)}</span>
                     ${episode ? `<span class="badge ep" style="top:8px;left:auto;right:8px;">${escapeHtml(episode)}</span>` : ""}
-                    ${(year || hasVisibleRating(rating)) ? `
+                    ${(year || ratingBadges) ? `
                         <div class="card-thumb-badges">
                             ${year ? `<span class="badge badge-year">${escapeHtml(year)}</span>` : ""}
-                            ${hasVisibleRating(rating) ? `<span class="badge badge-rating">IMDb ${escapeHtml(rating)}</span>` : ""}
+                            ${ratingBadges}
                         </div>
                     ` : ""}
                 </div>
@@ -788,10 +981,12 @@ function createHeroMeta(movie) {
     const quality = movie.quality || "HD";
     const year = movie.year || movie.release_year || movie.modified?.time?.slice(0, 4) || "";
     const serverLabel = movie.lang || movie.language || "Phần 1";
-    const rating = movie.movie_rating || movie.imdb?.vote_average || "0.0";
+    const imdbRating = getMovieImdbRating(movie);
+    const tmdbRating = getMovieTmdbRating(movie);
 
     return [
-        `<span class="hero-meta-chip hero-meta-rating">IMDb ${escapeHtml(rating)}</span>`,
+        imdbRating ? `<span class="hero-meta-chip hero-meta-rating hero-meta-rating--imdb">IMDb ${escapeHtml(imdbRating)}</span>` : "",
+        tmdbRating ? `<span class="hero-meta-chip hero-meta-rating hero-meta-rating--tmdb">TMDB ${escapeHtml(tmdbRating)}</span>` : "",
         quality ? `<span class="fhd">${escapeHtml(quality)}</span>` : "",
         year ? `<span class="hero-meta-chip">${escapeHtml(year)}</span>` : "",
         serverLabel ? `<span class="hero-meta-chip">${escapeHtml(serverLabel)}</span>` : "",
@@ -810,7 +1005,7 @@ function renderHeroTitle(heroTitle, movieName, logoUrl) {
         return;
     }
 
-    const canUseLogo = window.matchMedia("(min-width: 1025px)").matches && logoUrl;
+    const canUseLogo = Boolean(logoUrl);
     if (!canUseLogo) {
         heroTitle.textContent = movieName;
         heroTitle.classList.remove("has-logo");
@@ -859,6 +1054,7 @@ async function loadHeroSlider() {
     const heroPlayBtn = byId("heroPlayBtn");
     const heroInfoBtn = byId("heroInfoBtn");
     const heroLikeBtn = byId("heroLikeBtn");
+    const heroShareBtn = byId("heroShareBtn");
     const heroThumbs = byId("heroThumbs");
     const heroCopy = byId("heroCopy");
 
@@ -881,7 +1077,7 @@ async function loadHeroSlider() {
         let swipedDuringPointer = false;
         let currentHeroMovie = null;
         const heroDetailCache = new Map();
-        const desktopHeroLogoQuery = window.matchMedia("(min-width: 1025px)");
+        const heroLogoCache = new Map();
         const autoplayDelay = 20000;
         const contentRevealDelay = 500;
 
@@ -897,7 +1093,37 @@ async function loadHeroSlider() {
             || "https://via.placeholder.com/1280x720?text=No+Image"
         );
 
-        const updateHeroContent = (movie) => {
+        const getPreloadedHeroLogo = async (movie) => {
+            const logoUrl = await fetchTmdbMovieLogo(movie, heroLogoCache);
+            return preloadImage(logoUrl);
+        };
+
+        const applyHeroLogo = async (movie, token, { preserveExistingLogo = true } = {}) => {
+            if (!movie) {
+                return;
+            }
+
+            const name = movie.name || "Phim noi bat";
+            try {
+                const logoUrl = await getPreloadedHeroLogo(movie);
+                if (token === renderToken) {
+                    if (!logoUrl && preserveExistingLogo && heroTitle?.classList.contains("has-logo")) {
+                        return;
+                    }
+                    renderHeroTitle(heroTitle, name, logoUrl);
+                }
+            } catch (error) {
+                console.error("Load TMDB hero logo failed:", error);
+                if (token === renderToken) {
+                    if (preserveExistingLogo && heroTitle?.classList.contains("has-logo")) {
+                        return;
+                    }
+                    renderHeroTitle(heroTitle, name, "");
+                }
+            }
+        };
+
+        const updateHeroContent = (movie, { resetTitle = true } = {}) => {
             if (!movie) {
                 return;
             }
@@ -906,7 +1132,9 @@ async function loadHeroSlider() {
             const originalName = movie.origin_name || movie.original_name || "TF-Phim Spotlight";
             currentHeroMovie = movie;
 
-            renderHeroTitle(heroTitle, name, "");
+            if (resetTitle || !heroTitle?.classList.contains("has-logo")) {
+                renderHeroTitle(heroTitle, name, "");
+            }
             if (heroOriginal) {
                 heroOriginal.textContent = originalName;
             }
@@ -939,25 +1167,59 @@ async function loadHeroSlider() {
             }
         };
 
-        desktopHeroLogoQuery.addEventListener("change", () => {
-            if (!currentHeroMovie) {
-                return;
-            }
-            renderHeroTitle(heroTitle, currentHeroMovie.name || "Phim noi bat", "");
-        });
-
         const getHeroMovieWithContent = async (movie) => {
             if (!movie?.slug || movie.content) {
                 return movie;
             }
 
             if (heroDetailCache.has(movie.slug)) {
-                return mergeMovieData(movie, heroDetailCache.get(movie.slug));
+                return mergeMovieData(movie, await heroDetailCache.get(movie.slug));
             }
 
-            const detailMovie = await fetchMovieDetail(movie.slug);
-            heroDetailCache.set(movie.slug, detailMovie || {});
+            const detailRequest = fetchMovieDetail(movie.slug)
+                .then((detailMovie) => {
+                    const resolvedDetailMovie = detailMovie || {};
+                    heroDetailCache.set(movie.slug, resolvedDetailMovie);
+                    return resolvedDetailMovie;
+                })
+                .catch((error) => {
+                    heroDetailCache.delete(movie.slug);
+                    throw error;
+                });
+            heroDetailCache.set(movie.slug, detailRequest);
+            const detailMovie = await detailRequest;
             return mergeMovieData(movie, detailMovie || {});
+        };
+
+        const warmHeroIndexes = new Set();
+        const warmHeroMovieAssets = (index, includeDetail = false) => {
+            const movie = items[index];
+            if (!movie) {
+                return;
+            }
+
+            preloadImage(getHeroImage(movie));
+            getPreloadedHeroLogo(movie).catch((error) => console.error("Preload TMDB hero logo failed:", error));
+
+            if (includeDetail && movie.slug) {
+                getHeroMovieWithContent(movie)
+                    .then((movieWithContent) => getPreloadedHeroLogo(movieWithContent))
+                    .catch((error) => console.error("Preload hero content failed:", error));
+            }
+        };
+
+        const warmUpcomingHeroAssets = (index) => {
+            [0, 1, 2].forEach((offset) => {
+                const nextIndex = (index + offset) % items.length;
+                if (warmHeroIndexes.has(nextIndex)) {
+                    return;
+                }
+
+                warmHeroIndexes.add(nextIndex);
+                window.setTimeout(() => {
+                    warmHeroMovieAssets(nextIndex, offset <= 1);
+                }, offset * 120);
+            });
         };
 
         const syncBackdrop = (movie, immediate = false) => {
@@ -998,17 +1260,24 @@ async function loadHeroSlider() {
             activeIndex = index;
             renderToken += 1;
             const currentToken = renderToken;
+            const movieWithContentPromise = getHeroMovieWithContent(movie)
+                .catch((error) => {
+                    console.error("Load hero content failed:", error);
+                    return movie;
+                });
             syncBackdrop(movie, immediate);
+            warmUpcomingHeroAssets(activeIndex);
 
             if (!heroCopy || immediate) {
                 updateHeroContent(movie);
-                getHeroMovieWithContent(movie)
+                applyHeroLogo(movie, currentToken);
+                movieWithContentPromise
                     .then((movieWithContent) => {
                         if (currentToken === renderToken) {
-                            updateHeroContent(movieWithContent);
+                            updateHeroContent(movieWithContent, { resetTitle: false });
+                            applyHeroLogo(movieWithContent, currentToken);
                         }
-                    })
-                    .catch((error) => console.error("Load hero content failed:", error));
+                    });
                 if (heroCopy) {
                     heroCopy.classList.remove("is-transitioning", "is-visible");
                     void heroCopy.offsetWidth;
@@ -1019,27 +1288,27 @@ async function loadHeroSlider() {
 
             heroCopy.classList.remove("is-visible");
             heroCopy.classList.add("is-transitioning");
+            updateHeroContent(movie);
+            applyHeroLogo(movie, currentToken);
+
+            movieWithContentPromise
+                .then((movieWithContent) => {
+                    if (currentToken !== renderToken) {
+                        return;
+                    }
+
+                    updateHeroContent(movieWithContent, { resetTitle: false });
+                    applyHeroLogo(movieWithContent, currentToken);
+                });
 
             window.setTimeout(() => {
                 if (currentToken !== renderToken) {
                     return;
                 }
 
-                getHeroMovieWithContent(movie)
-                    .catch((error) => {
-                        console.error("Load hero content failed:", error);
-                        return movie;
-                    })
-                    .then((movieWithContent) => {
-                        if (currentToken !== renderToken) {
-                            return;
-                        }
-
-                        updateHeroContent(movieWithContent);
-                        heroCopy.classList.remove("is-transitioning");
-                        void heroCopy.offsetWidth;
-                        heroCopy.classList.add("is-visible");
-                    });
+                heroCopy.classList.remove("is-transitioning");
+                void heroCopy.offsetWidth;
+                heroCopy.classList.add("is-visible");
             }, contentRevealDelay);
         };
 
@@ -1056,6 +1325,56 @@ async function loadHeroSlider() {
             }
 
             window.location.href = `/phim/${movie.slug}`;
+        };
+
+        const getHeroShareUrl = (movie) => {
+            if (!movie?.slug) {
+                return window.location.href;
+            }
+            return new URL(`/phim/${movie.slug}`, window.location.origin).toString();
+        };
+
+        const copyHeroShareUrl = async (url) => {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(url);
+                return;
+            }
+
+            const textarea = document.createElement("textarea");
+            textarea.value = url;
+            textarea.setAttribute("readonly", "");
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            textarea.style.pointerEvents = "none";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            textarea.remove();
+        };
+
+        const shareActiveHeroMovie = async () => {
+            const movie = currentHeroMovie || items[activeIndex];
+            const url = getHeroShareUrl(movie);
+            const title = movie?.name || "TF-Phim";
+            const text = getMovieDescription(movie) ? cleanTextSnippet(getMovieDescription(movie), 120) : title;
+
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title, text, url });
+                    return;
+                }
+
+                await copyHeroShareUrl(url);
+                heroShareBtn?.classList.add("is-copied");
+                window.setTimeout(() => heroShareBtn?.classList.remove("is-copied"), 900);
+                showToast("Da sao chep lien ket phim.");
+            } catch (error) {
+                if (error?.name === "AbortError") {
+                    return;
+                }
+                console.error("Share hero movie failed:", error);
+                showToast("Khong the chia se phim luc nay.", "error");
+            }
         };
 
         const startAutoRotate = () => {
@@ -1083,6 +1402,13 @@ async function loadHeroSlider() {
                 } finally {
                     syncFavoriteButton(heroLikeBtn, movie);
                 }
+            });
+        }
+
+        if (heroShareBtn) {
+            heroShareBtn.addEventListener("click", () => {
+                shareActiveHeroMovie();
+                restartAutoRotate();
             });
         }
 
@@ -1262,7 +1588,6 @@ function bindMovieHoverPopup(root = document) {
             const name = movie.name || "Khong ro";
             const originalName = getMovieOriginalName(movie);
             const image = resolveMovieImageUrl(movie.thumb_url, movie.source) || resolveMovieImageUrl(movie.poster_url, movie.source) || "https://via.placeholder.com/600x900?text=No+Image";
-            const rating = getMovieRating(movie);
             const quality = movie.quality || "";
             const ageRating = getMovieAgeRating(movie);
             const year = getMovieYear(movie);
@@ -1278,7 +1603,7 @@ function bindMovieHoverPopup(root = document) {
                 ? (trailerUrl || detailHref)
                 : (slug ? `/xem/${encodeURIComponent(slug)}` : "#");
             const chips = [
-                hasVisibleRating(rating) ? `<span class="movie-hover-popup__chip movie-hover-popup__chip--rating">IMDb ${escapeHtml(rating)}</span>` : "",
+                createRatingBadges(movie, "movie-hover-popup__chip"),
                 quality ? `<span class="movie-hover-popup__chiphd">${escapeHtml(quality)}</span>` : "",
                 ageRating ? `<span class="movie-hover-popup__chip">${escapeHtml(ageRating)}</span>` : "",
                 year ? `<span class="movie-hover-popup__chip">${escapeHtml(year)}</span>` : "",
