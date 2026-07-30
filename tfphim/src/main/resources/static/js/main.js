@@ -8,12 +8,21 @@ const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
 const MOVIE_TYPES = {
     "phim-moi": "phim-moi",
     "phim-viet-nam": "quoc-gia/viet-nam",
+    "phim-nhat-ban": "quoc-gia/nhat-ban",
     "phim-bo": "phim-bo",
     "phim-le": "phim-le"
 };
 
 function byId(id) {
     return document.getElementById(id);
+}
+
+function faIcon(iconName, className = "") {
+    const classes = ["fa-solid", iconName, className]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(" ");
+    return `<i class="${classes}" aria-hidden="true"></i>`;
 }
 
 async function getJson(url) {
@@ -78,11 +87,11 @@ function showToast(message, type = "success") {
     toast.setAttribute("aria-live", "polite");
     toast.innerHTML = `
         <span class="app-toast__icon">
-            <i class="fa-solid ${type === "error" ? "fa-xmark" : "fa-check"}"></i>
+            ${faIcon(type === "error" ? "fa-xmark" : "fa-check")}
         </span>
         <span class="app-toast__message">${escapeHtml(message)}</span>
         <button class="app-toast__close" type="button" aria-label="Dong thong bao">
-            <i class="fa-solid fa-xmark"></i>
+            ${faIcon("fa-xmark")}
         </button>
         <span class="app-toast__progress" aria-hidden="true"></span>
     `;
@@ -934,7 +943,7 @@ function createMovieCard(movie, listingType = "", index = 0) {
                          loading="${loading}" decoding="async" fetchpriority="${fetchPriority}"
                          onerror="this.src='https://via.placeholder.com/200x300?text=No+Image'">
                     <div class="overlay">
-                        <div class="play-btn"><i class="fa-solid fa-play"></i></div>
+                        <div class="play-btn">${faIcon("fa-play")}</div>
                     </div>
                     <span class="badge hd">${escapeHtml(quality)}</span>
                     ${episode ? `<span class="badge ep" style="top:8px;left:auto;right:8px;">${escapeHtml(episode)}</span>` : ""}
@@ -1508,6 +1517,194 @@ function renderMovies(containerId, movies, emptyMessage = "Khong tim thay phim."
     bindMovieHoverPopup(grid);
 }
 
+function getJapanMazeEpisodeNumber(movie, episodeLabel = "") {
+    const values = [
+        movie?.total_episodes,
+        movie?.episode_total,
+        movie?.current_episode,
+        movie?.episode_current,
+        episodeLabel
+    ];
+
+    for (const value of values) {
+        const number = extractEpisodeCountFromLabel(value);
+        if (number > 0) {
+            return String(number);
+        }
+    }
+
+    return "";
+}
+
+function getJapanMazeEpisodeBadges(movie, episodeLabel) {
+    const episodeNumber = getJapanMazeEpisodeNumber(movie, episodeLabel);
+    const languageBadges = getLanguageBadges(getMovieLanguageBadgeSource(movie));
+    const isSeriesMovie = isSeriesCardMovie(movie);
+    const badgeLabelMap = {
+        "lang-sub": "P\u0110.",
+        "lang-dub": "TM.",
+        "lang-voice": "LT."
+    };
+
+    if (languageBadges.length) {
+        if (!isSeriesMovie) {
+            return languageBadges.map((badge) => (
+                `<span class="japan-maze-episode-badge ${escapeHtml(badge.className)}">${escapeHtml(badge.label)}</span>`
+            )).join("");
+        }
+
+        return languageBadges.slice(0, 2).map((badge) => {
+            const label = badgeLabelMap[badge.className] || badge.label;
+            const value = episodeNumber || episodeLabel;
+            return `<span class="japan-maze-episode-badge ${escapeHtml(badge.className)}">${escapeHtml(label)} ${escapeHtml(value)}</span>`;
+        }).join("");
+    }
+
+    return isSeriesMovie && episodeLabel
+        ? `<span class="japan-maze-episode-badge">${escapeHtml(episodeLabel)}</span>`
+        : "";
+}
+
+function createJapanMazeCard(movie, index = 0) {
+    const rank = index + 1;
+    const slug = movie.slug || "";
+    const name = movie.name || "Khong ro";
+    const originalName = getMovieOriginalName(movie);
+    const image = getMovieImage(movie);
+    const episodeLabel = getCardEpisodeLabel(movie, "phim-bo");
+    const episodeNumber = getJapanMazeEpisodeNumber(movie, episodeLabel);
+    const episodeMeta = episodeNumber ? `T\u1eadp ${episodeNumber}` : episodeLabel;
+    const ageRating = getMovieAgeRating(movie) || "T13";
+    const href = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
+    const disabledClass = slug ? "" : " is-disabled";
+    const datasetAttrs = createMovieDatasetAttributes(movie);
+
+    return `
+        <a class="japan-maze-card-link${disabledClass}" href="${escapeHtml(href)}" ${slug ? "" : 'aria-disabled="true" tabindex="-1"'}>
+            <article class="japan-maze-card movie-card" ${datasetAttrs}>
+                <div class="japan-maze-poster">
+                    <img src="${escapeHtml(image)}" alt="${escapeHtml(name)}" width="360" height="540"
+                         sizes="(max-width: 640px) 62vw, (max-width: 1200px) 32vw, 340px"
+                         loading="${index < 5 ? "eager" : "lazy"}" decoding="async" fetchpriority="${index < 5 ? "high" : "low"}"
+                         onerror="this.src='https://via.placeholder.com/360x540?text=No+Image'">
+                    <div class="japan-maze-poster-shade" aria-hidden="true"></div>
+                    <div class="japan-maze-episode-badges">${getJapanMazeEpisodeBadges(movie, episodeLabel)}</div>
+                </div>
+                <div class="japan-maze-info">
+                    <span class="japan-maze-rank" data-rank="${escapeHtml(String(rank))}">${rank}</span>
+                    <span class="japan-maze-copy">
+                        <span class="japan-maze-title" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                        ${originalName ? `<span class="japan-maze-original" title="${escapeHtml(originalName)}">${escapeHtml(originalName)}</span>` : ""}
+                        <span class="japan-maze-meta">
+                            <strong>${escapeHtml(ageRating)}</strong>
+                            ${episodeMeta ? `<span aria-hidden="true"></span><em>${escapeHtml(episodeMeta)}</em>` : ""}
+                        </span>
+                    </span>
+                </div>
+            </article>
+        </a>
+    `;
+}
+
+function getJapanMazeScrollStep(strip) {
+    const firstCard = strip?.querySelector(".japan-maze-card-link");
+    if (!firstCard) {
+        return strip?.clientWidth || 0;
+    }
+
+    const stripStyles = window.getComputedStyle(strip);
+    const gap = Number.parseFloat(stripStyles.columnGap || stripStyles.gap || "0") || 0;
+    const cardWidth = firstCard.getBoundingClientRect().width;
+    return cardWidth + gap;
+}
+
+function bindJapanMazeControls(strip) {
+    if (!(strip instanceof HTMLElement)) {
+        return;
+    }
+
+    const section = strip.closest(".japan-maze-section");
+    const controls = section?.querySelector(".japan-maze-controls");
+    const prevButton = section?.querySelector("[data-japan-maze-prev]");
+    const nextButton = section?.querySelector("[data-japan-maze-next]");
+    if (!controls || !prevButton || !nextButton) {
+        return;
+    }
+
+    const syncControlHeight = () => {
+        const poster = strip.querySelector(".japan-maze-poster");
+        const posterHeight = poster?.getBoundingClientRect().height || 0;
+        if (posterHeight > 0) {
+            controls.style.setProperty("--japan-maze-control-height", `${Math.round(posterHeight)}px`);
+        }
+    };
+
+    const updateControls = () => {
+        syncControlHeight();
+        const maxScroll = Math.max(0, strip.scrollWidth - strip.clientWidth - 1);
+        const canScroll = maxScroll > 1;
+        controls.hidden = !canScroll;
+        prevButton.disabled = !canScroll || strip.scrollLeft <= 1;
+        nextButton.disabled = !canScroll || strip.scrollLeft >= maxScroll;
+    };
+
+    strip.japanMazeUpdateControls = updateControls;
+
+    if (strip.dataset.japanMazeControlsBound === "true") {
+        window.requestAnimationFrame(updateControls);
+        return;
+    }
+
+    const moveByCard = (direction) => {
+        strip.scrollBy({
+            left: direction * getJapanMazeScrollStep(strip),
+            behavior: "smooth"
+        });
+    };
+
+    prevButton.addEventListener("click", () => moveByCard(-1));
+    nextButton.addEventListener("click", () => moveByCard(1));
+    strip.addEventListener("scroll", () => {
+        window.requestAnimationFrame(updateControls);
+    }, { passive: true });
+    window.addEventListener("resize", updateControls);
+
+    strip.dataset.japanMazeControlsBound = "true";
+    window.requestAnimationFrame(updateControls);
+}
+
+function renderJapanMazeMovies(containerId, movies, emptyMessage = "Khong tim thay phim Nhat.") {
+    const strip = byId(containerId);
+    if (!strip) {
+        return;
+    }
+
+    if (!movies.length) {
+        strip.innerHTML = `<div class="loading-spinner">${emptyMessage}</div>`;
+        bindJapanMazeControls(strip);
+        return;
+    }
+
+    strip.innerHTML = movies.slice(0, 10).map(createJapanMazeCard).join("");
+    strip.querySelectorAll(".japan-maze-card-link.is-disabled").forEach((link) => {
+        link.addEventListener("click", (event) => {
+            event.preventDefault();
+        });
+    });
+    bindMovieHoverPopup(strip);
+    bindJapanMazeControls(strip);
+}
+
+async function fetchManagedJapanMazeMovies() {
+    try {
+        const data = await getJson("/api/quan-ly-phim/japan-maze?enabledOnly=true");
+        return getMovieItems(data);
+    } catch (error) {
+        console.warn("Load managed Japan maze movies failed:", error);
+        return [];
+    }
+}
+
 function bindMovieHoverPopup(root = document) {
     const desktopQuery = window.matchMedia("(min-width: 1025px)");
     const popupId = "movieHoverPopup";
@@ -1541,15 +1738,15 @@ function bindMovieHoverPopup(root = document) {
                     <p class="movie-hover-popup__original"></p>
                     <div class="movie-hover-popup__actions">
                         <a class="movie-hover-popup__btn movie-hover-popup__btn--primary" data-popup-action="watch" href="#">
-                            <i class="fa-solid fa-play"></i>
+                            ${faIcon("fa-play")}
                             <span>Xem ngay</span>
                         </a>
                         <button type="button" class="movie-hover-popup__btn" data-popup-action="like">
-                            <i class="fa-solid fa-heart"></i>
+                            ${faIcon("fa-heart")}
                             <span>Thích</span>
                         </button>
                         <a class="movie-hover-popup__btn" data-popup-action="detail" href="#">
-                            <i class="fa-solid fa-circle-info"></i>
+                            ${faIcon("fa-circle-info")}
                             <span>Chi tiết</span>
                         </a>
                     </div>
@@ -1560,25 +1757,60 @@ function bindMovieHoverPopup(root = document) {
             document.body.appendChild(popup);
         }
 
-        let isPointerInsidePopup = false;
+        let suppressHideUntil = 0;
+
+        const isInsidePopup = (target) => target instanceof Node && popup.contains(target);
+        const isInsideActiveCardArea = (target) => {
+            if (!(target instanceof Node) || !activeCard) {
+                return false;
+            }
+
+            const activeLink = activeCard.closest(".movie-card-link, .japan-maze-card-link");
+            return activeCard.contains(target) || Boolean(activeLink?.contains(target));
+        };
+        const getCardArea = (card) => card?.querySelector(".japan-maze-poster, .card-thumb")
+            || card?.closest(".movie-card-link, .japan-maze-card-link")
+            || card;
+        const getCardRect = (card) => getCardArea(card)?.getBoundingClientRect();
+        const clampPosition = (value, min, max) => Math.max(min, Math.min(value, max));
+        const isCardVisible = (card) => {
+            const rect = getCardRect(card);
+            if (!card?.isConnected || !rect) {
+                return false;
+            }
+
+            const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+            const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+            return visibleWidth > 8 && visibleHeight > 8;
+        };
 
         const setPopupPosition = (card) => {
-            const rect = card.getBoundingClientRect();
+            const rect = getCardRect(card);
+            if (!rect) {
+                return;
+            }
+
             const popupRect = popup.getBoundingClientRect();
             const popupWidth = popupRect.width || 420;
             const popupHeight = popupRect.height || 560;
-            const gutter = 16;
-            let left = rect.right + gutter;
+            const viewportGutter = 16;
+            const cardOverlap = 2;
+            const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
+            const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            const minLeft = scrollX + viewportGutter;
+            const maxLeft = Math.max(minLeft, scrollX + window.innerWidth - popupWidth - viewportGutter);
+            const maxTop = Math.max(0, document.documentElement.scrollHeight - popupHeight);
+            const rightLeft = scrollX + rect.right - cardOverlap;
+            const leftLeft = scrollX + rect.left - popupWidth + cardOverlap;
+            let left = rightLeft;
 
-            if (left + popupWidth > window.innerWidth - gutter) {
-                left = rect.left - popupWidth - gutter;
-            }
-            if (left < gutter) {
-                left = Math.max(gutter, Math.min(rect.left + (rect.width - popupWidth) / 2, window.innerWidth - popupWidth - gutter));
+            if (rightLeft + popupWidth > scrollX + window.innerWidth - viewportGutter && leftLeft >= minLeft) {
+                left = leftLeft;
+            } else if (rightLeft + popupWidth > scrollX + window.innerWidth - viewportGutter) {
+                left = clampPosition(scrollX + rect.left + (rect.width - popupWidth) / 2, minLeft, maxLeft);
             }
 
-            let top = rect.top + (rect.height - popupHeight) / 2;
-            top = Math.max(gutter, Math.min(top, window.innerHeight - popupHeight - gutter));
+            const top = clampPosition(scrollY + rect.top + (rect.height - popupHeight) / 2, viewportGutter, maxTop);
 
             popup.style.left = `${Math.round(left)}px`;
             popup.style.top = `${Math.round(top)}px`;
@@ -1665,13 +1897,14 @@ function bindMovieHoverPopup(root = document) {
         const hidePopup = () => {
             showTimer = clearTimer(showTimer);
             hideTimer = clearTimer(hideTimer);
+            popup.classList.add("is-hiding");
             popup.classList.remove("is-visible");
             activeCard?.classList.remove("is-hover-popup-active");
             activeCard = null;
         };
 
         const showPopup = async (card) => {
-            if (!desktopQuery.matches || !card?.dataset.slug) {
+            if (!desktopQuery.matches || !card?.dataset.slug || !isCardVisible(card)) {
                 return;
             }
 
@@ -1681,6 +1914,7 @@ function bindMovieHoverPopup(root = document) {
             activeCard.classList.add("is-hover-popup-active");
 
             setPopupContent(baseMovie);
+            popup.classList.remove("is-hiding");
             popup.classList.add("is-visible");
             popup.style.visibility = "hidden";
             setPopupPosition(card);
@@ -1698,7 +1932,11 @@ function bindMovieHoverPopup(root = document) {
                 }
 
                 setPopupContent(mergeMovieData(baseMovie, detailMovie));
-                setPopupPosition(card);
+                if (isCardVisible(card)) {
+                    setPopupPosition(card);
+                } else {
+                    hidePopup();
+                }
             } catch (error) {
                 console.error("Load movie hover detail failed:", error);
             }
@@ -1711,9 +1949,17 @@ function bindMovieHoverPopup(root = document) {
 
             hideTimer = clearTimer(hideTimer);
             showTimer = clearTimer(showTimer);
+            if (activeCard === card && popup.classList.contains("is-visible")) {
+                return;
+            }
+
             showTimer = window.setTimeout(() => {
+                if (!isCardVisible(card)) {
+                    return;
+                }
+
                 showPopup(card);
-            }, 500);
+            }, 850);
 
             const slug = card.dataset.slug;
             if (slug && !detailCache.has(slug)) {
@@ -1723,21 +1969,26 @@ function bindMovieHoverPopup(root = document) {
             }
         };
 
-        const scheduleHide = () => {
+        const scheduleHide = (event) => {
             showTimer = clearTimer(showTimer);
             hideTimer = clearTimer(hideTimer);
-            hideTimer = window.setTimeout(() => {
-                hidePopup();
-            }, 120);
+            if (Date.now() < suppressHideUntil) {
+                return;
+            }
+
+            const relatedTarget = event?.relatedTarget;
+            if (isInsidePopup(relatedTarget) || isInsideActiveCardArea(relatedTarget)) {
+                return;
+            }
+
+            hidePopup();
         };
 
         popup.addEventListener("mouseenter", () => {
-            isPointerInsidePopup = true;
             hideTimer = clearTimer(hideTimer);
         });
-        popup.addEventListener("mouseleave", () => {
-            isPointerInsidePopup = false;
-            scheduleHide();
+        popup.addEventListener("mouseleave", (event) => {
+            scheduleHide(event);
         });
         popup.addEventListener("click", (event) => {
             const action = event.target.closest("[data-popup-action]");
@@ -1774,11 +2025,11 @@ function bindMovieHoverPopup(root = document) {
         });
 
         document.addEventListener("scroll", () => {
-            if (isPointerInsidePopup) {
-                return;
+            suppressHideUntil = Date.now() + 180;
+            if (activeCard && popup.classList.contains("is-visible") && !isCardVisible(activeCard)) {
+                hidePopup();
             }
-            hidePopup();
-        }, true);
+        }, { capture: true, passive: true });
         document.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 hidePopup();
@@ -1808,11 +2059,11 @@ function bindMovieHoverPopup(root = document) {
 
         card.dataset.hoverPopupBound = "true";
         card.addEventListener("mouseenter", () => bindMovieHoverPopup.state.scheduleShow(card));
-        card.addEventListener("mouseleave", bindMovieHoverPopup.state.scheduleHide);
+        card.addEventListener("mouseleave", (event) => bindMovieHoverPopup.state.scheduleHide(event));
 
-        const link = card.closest(".movie-card-link");
+        const link = card.closest(".movie-card-link, .japan-maze-card-link");
         if (link) {
-            link.addEventListener("mouseleave", bindMovieHoverPopup.state.scheduleHide);
+            link.addEventListener("mouseleave", (event) => bindMovieHoverPopup.state.scheduleHide(event));
         }
     });
 }
@@ -1829,14 +2080,22 @@ function bindDetailFavoriteButton() {
     });
 }
 
-async function loadSection(type, containerId) {
+async function loadSection(type, containerId, options = {}) {
     const grid = byId(containerId);
     if (!grid) {
         return;
     }
 
     try {
-        const movies = await fetchMoviesWithLimit(type, getHomeSectionLimit(grid));
+        const limit = options.limit || getHomeSectionLimit(grid);
+        if (options.renderer === "japan-maze") {
+            const managedMovies = await fetchManagedJapanMazeMovies();
+            const movies = managedMovies.length ? managedMovies : await fetchMoviesWithLimit(type, limit);
+            renderJapanMazeMovies(containerId, movies);
+            return;
+        }
+
+        const movies = await fetchMoviesWithLimit(type, limit);
         renderMovies(containerId, movies, "Khong tim thay phim.", type);
     } catch (error) {
         console.error("Load section failed:", type, error);
@@ -1879,6 +2138,7 @@ function getHomeSectionLimit(grid) {
 function initHomeSections() {
     const homeSections = [
         { type: "phim-moi", containerId: "phimMoiGrid", sectionId: "section-phim-moi", eager: true },
+        { type: "phim-nhat-ban", containerId: "phimNhatBanMaze", sectionId: "section-phim-nhat-ban", limit: 10, renderer: "japan-maze" },
         { type: "phim-viet-nam", containerId: "phimVietNamGrid", sectionId: "section-phim-viet-nam" },
         { type: "phim-le", containerId: "phimLeGrid", sectionId: "section-phim-le" },
         { type: "phim-bo", containerId: "phimBoGrid", sectionId: "section-phim-bo" }
@@ -1891,15 +2151,19 @@ function initHomeSections() {
 
     const loadedSections = new Set();
     const loadedSectionLimits = new Map();
+    const getSectionLimit = (section) => section.limit || getHomeSectionLimit(byId(section.containerId));
     const loadOnce = (section) => {
         if (!section || loadedSections.has(section.containerId)) {
             return;
         }
 
         loadedSections.add(section.containerId);
-        const grid = byId(section.containerId);
-        loadedSectionLimits.set(section.containerId, getHomeSectionLimit(grid));
-        loadSection(section.type, section.containerId);
+        const limit = getSectionLimit(section);
+        loadedSectionLimits.set(section.containerId, limit);
+        loadSection(section.type, section.containerId, {
+            limit,
+            renderer: section.renderer
+        });
     };
 
     availableSections.filter((section) => section.eager).forEach(loadOnce);
@@ -1942,15 +2206,17 @@ function initHomeSections() {
                     return;
                 }
 
-                const grid = byId(section.containerId);
-                const nextLimit = getHomeSectionLimit(grid);
+                const nextLimit = getSectionLimit(section);
                 const prevLimit = loadedSectionLimits.get(section.containerId);
                 if (nextLimit === prevLimit) {
                     return;
                 }
 
                 loadedSectionLimits.set(section.containerId, nextLimit);
-                loadSection(section.type, section.containerId);
+                loadSection(section.type, section.containerId, {
+                    limit: nextLimit,
+                    renderer: section.renderer
+                });
             });
         }, 220);
     });
@@ -2045,7 +2311,7 @@ function bindLiveSearch() {
             </div>
             <div class="live-search-footer">
                 <a class="live-search-more" href="/tim-kiem?keyword=${encodeURIComponent(keyword)}">
-                    Xem kết quả đầy đủ <i class="fa-solid fa-arrow-right"></i>
+                    Xem kết quả đầy đủ ${faIcon("fa-arrow-right")}
                 </a>
             </div>
         `;
@@ -2296,7 +2562,7 @@ function bindDetailGalleryLightbox() {
             <div class="image-lightbox__top">
                 <span class="image-lightbox__counter"></span>
                 <button type="button" class="image-lightbox__close" aria-label="Đóng">
-                    <i class="fa-solid fa-xmark"></i>
+                    ${faIcon("fa-xmark")}
                 </button>
             </div>
             <div class="image-lightbox__stage">
@@ -2304,10 +2570,10 @@ function bindDetailGalleryLightbox() {
             </div>
             <div class="image-lightbox__bottom">
                 <button type="button" class="image-lightbox__nav" data-lightbox-prev aria-label="Ảnh trước">
-                    <i class="fa-solid fa-chevron-left"></i>
+                    ${faIcon("fa-chevron-left")}
                 </button>
                 <button type="button" class="image-lightbox__nav" data-lightbox-next aria-label="Ảnh tiếp theo">
-                    <i class="fa-solid fa-chevron-right"></i>
+                    ${faIcon("fa-chevron-right")}
                 </button>
             </div>
         `;

@@ -4,7 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${pageTitle} + ' - TF-Phim'">Phim yêu thích - TF-Phim</title>
-    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/feedback.css}">
+    <link rel="stylesheet" th:href="@{/css/favorites.css}">
+    <link rel="stylesheet" th:href="@{/css/components.css}">
+    <link rel="stylesheet" th:href="@{/css/layout.css}">
+    <link rel="stylesheet" th:href="@{/css/responsive.css}">
+    <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -19,7 +25,7 @@
 
         <div class="loading-spinner category-empty favorite-empty" data-favorites-empty>
             <div class="favorite-empty-icon">
-                <i class="fa-solid fa-heart-circle-plus"></i>
+                <i class="fa-solid fa-heart" aria-hidden="true"></i>
             </div>
             Tính năng này đang được phát triển, vui lòng quay lại sau!
         </div>

@@ -4,7 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${pageTitle} + ' - TF-Phim'">Xem phim - TF-Phim</title>
-    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/feedback.css}">
+    <link rel="stylesheet" th:href="@{/css/components.css}">
+    <link rel="stylesheet" th:href="@{/css/layout.css}">
+    <link rel="stylesheet" th:href="@{/css/detail.css}">
+    <link rel="stylesheet" th:href="@{/css/watch.css}">
+    <link rel="stylesheet" th:href="@{/css/responsive.css}">
+    <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -45,14 +52,14 @@
                         <h3 th:text="${movie['name']}">Tên phim</h3>
                         <p>Nguồn phát chỉ được tải khi bạn bấm xem để tránh gọi API tự động lúc reload trang.</p>
                         <button id="startPlaybackButton" type="button" class="primary-btn player-start-btn">
-                            <i class="fa-solid fa-play"></i> Xem ngay
+                            <i class="fa-solid fa-play" aria-hidden="true"></i> Xem ngay
                         </button>
                     </div>
                 </div>
 
                 <div id="playerFallbackNotice" class="player-fallback-notice" style="display:none">
                     <div class="player-fallback-card">
-                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                         <h3>Không thể phát trực tiếp trên trang</h3>
                         <p>Nguồn phim hiện tại đang chặn nhúng hoặc giới hạn truy cập. Bạn có thể mở nguồn phát ở tab mới.</p>
                         <div class="player-fallback-actions">
@@ -62,7 +69,7 @@
                                target="_blank"
                                rel="noopener noreferrer"
                                style="display:none">
-                                <i class="fa-solid fa-up-right-from-square"></i> Mở nguồn gốc
+                                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Mở nguồn gốc
                             </a>
                             <a id="openM3u8Fallback"
                                class="secondary-btn"
@@ -70,7 +77,7 @@
                                target="_blank"
                                rel="noopener noreferrer"
                                style="display:none">
-                                <i class="fa-solid fa-link"></i> Mở m3u8
+                                <i class="fa-solid fa-link" aria-hidden="true"></i> Mở m3u8
                             </a>
                         </div>
                     </div>
@@ -129,7 +136,7 @@
                     <div class="watch-progress-row" th:if="${showEpisodeProgress}">
                         <span class="watch-progress-pill"
                               th:classappend="${episodeProgressCompleted} ? ' completed' : ' incomplete'">
-                            <i class="fa-solid fa-clock-rotate-left"></i>
+                            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
                             <span th:text="${episodeProgressText}">Đã chiếu 12 / 24 tập</span>
                         </span>
                     </div>
@@ -154,7 +161,7 @@
                            target="_blank"
                            rel="noopener noreferrer"
                            title="Mở embed gốc">
-                            <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
+                            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
                             <span>Embed</span>
                         </a>
                     </div>
@@ -163,7 +170,7 @@
 
                     <div class="watch-info-actions">
                         <a class="watch-detail-link" th:href="@{/phim/{slug}(slug=${movie['slug']})}">
-                            Thông tin phim <i class="fa-solid fa-angle-right"></i>
+                            Thông tin phim <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                         </a>
                     </div>
                 </div>
@@ -210,9 +217,9 @@
                                     tabindex="-1"
                                     aria-label="Phần 1">
                                 <span class="episode-part-dropdown-toggle-main">
-                                    <i class="fa-solid fa-bars-staggered" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-list" aria-hidden="true"></i>
                                     <span class="episode-part-dropdown-label">Phần 1</span>
-                                    <i class="fa-solid fa-caret-down" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                                 </span>
                                 <span class="episode-part-dropdown-divider" aria-hidden="true"></span>
                             </button>
@@ -228,7 +235,7 @@
                                 aria-haspopup="menu"
                                 aria-label="Chọn server">
                             <span class="episode-server-dropdown-label">Server 1</span>
-                            <i class="fa-solid fa-angle-down" aria-hidden="true"></i>
+                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                         </button>
                         <div class="episode-server-dropdown-menu" hidden>
                             <div class="episode-server-dropdown-title">Server / bản dịch</div>
@@ -240,10 +247,10 @@
                             <button type="button"
                                     class="episode-server-tab"
                                     th:each="serverItem, serverStat : ${pagedEpisodes}"
-                                    th:text="${serverItem['server_name']}"
                                     th:classappend="${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)} ? ' active'"
                                     th:attr="data-server-target=${'watch-server-' + serverStat.index},aria-selected=${selectedServer == serverItem['server_name'] or (selectedServer == null and serverStat.first)}">
-                                Vietsub #1
+                                <i class="fa-solid fa-server" aria-hidden="true"></i>
+                                <span th:text="${serverItem['server_name']}">Vietsub #1</span>
                             </button>
                         </div>
                 </div>
@@ -274,7 +281,7 @@
                                    th:classappend="${selectedServer == serverItem['server_name'] and selectedTap == episode['slug']} ? ' active'"
                                    th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${serverItem['server_name']})}">
                                     <span class="episode-item-label">
-                                        <i class="fa-solid fa-play"></i>
+                                        <i class="fa-solid fa-play" aria-hidden="true"></i>
                                         <span th:text="${episode['name'] != null and #strings.startsWith(#strings.toLowerCase(#strings.trim(episode['name'])), 'tập') ? episode['name'] : 'Tập ' + episode['name']}">Tập 1</span>
                                     </span>
                                 </a>
@@ -313,7 +320,7 @@
 
 <main class="detail-page detail-error" th:if="${errorMessage != null}">
     <div class="detail-error-card">
-        <i class="fa-solid fa-circle-exclamation"></i>
+        <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
         <h1>Không tải được trang xem</h1>
         <p th:text="${errorMessage}">Không thể tải trang xem phim vào lúc này.</p>
         <a th:if="${movie != null and movie['slug'] != null}" th:href="@{/phim/{slug}(slug=${movie['slug']})}" class="primary-btn">Về trang chi tiết</a>

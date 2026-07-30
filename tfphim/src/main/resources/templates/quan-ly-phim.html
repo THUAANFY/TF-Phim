@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Quan ly phim - TF-Phim</title>
+    <link rel="preconnect" href="https://img.phimapi.com">
+    <link rel="preconnect" href="https://img.ophim.live">
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/feedback.css}">
+    <link rel="stylesheet" th:href="@{/css/components.css}">
+    <link rel="stylesheet" th:href="@{/css/layout.css}">
+    <link rel="stylesheet" th:href="@{/css/responsive.css}">
+    <link rel="stylesheet" th:href="@{/css/admin-movies.css}">
+    <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
+    <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="admin-movies-body">
+<th:block th:replace="~{layouts/navbar :: siteNavbar}"></th:block>
+
+<main class="admin-movies-page" data-admin-movies-page>
+    <section class="admin-movies-hero">
+        <div class="admin-movies-heading">
+            <span class="admin-movies-kicker">TF-Phim Admin</span>
+            <h1>Qu&#7843;n l&#253; phim</h1>
+            <p>M&#234; Cung Phim Nh&#7853;t</p>
+        </div>
+
+        <div class="admin-hero-actions">
+            <a class="admin-preview-link" href="/#section-phim-nhat-ban">
+                <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                <span>Xem section</span>
+            </a>
+            <div class="admin-movies-status" data-admin-save-state>
+                <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                <span>S&#7861;n s&#224;ng</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-overview" aria-label="Thong ke quan ly phim">
+        <div class="admin-stat-card">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+            <span>
+                <strong data-admin-selected-count>0</strong>
+                <small>&#272;&#227; ch&#7885;n</small>
+            </span>
+        </div>
+        <div class="admin-stat-card admin-stat-card--enabled">
+            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+            <span>
+                <strong data-admin-enabled-count>0</strong>
+                <small>&#272;ang b&#7853;t</small>
+            </span>
+        </div>
+        <div class="admin-stat-card admin-stat-card--muted">
+            <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+            <span>
+                <strong data-admin-disabled-count>0</strong>
+                <small>&#272;ang &#7849;n</small>
+            </span>
+        </div>
+    </section>
+
+    <section class="admin-movies-layout">
+        <section class="admin-workspace admin-workspace--search">
+            <div class="admin-workspace-head">
+                <div class="admin-workspace-title">
+                    <span class="admin-panel-icon">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    </span>
+                    <span>
+                        <span class="admin-panel-eyebrow">API</span>
+                        <h2>T&#236;m phim</h2>
+                    </span>
+                </div>
+                <div class="admin-source-toggle" role="tablist" aria-label="Nguon phim">
+                    <button type="button" class="is-active" data-admin-source="all">T&#7845;t c&#7843;</button>
+                    <button type="button" data-admin-source="kk">KK</button>
+                    <button type="button" data-admin-source="ophim">OPhim</button>
+                </div>
+            </div>
+
+            <form class="admin-search-form" data-admin-search-form>
+                <label class="admin-search-field" for="adminMovieSearch">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input id="adminMovieSearch"
+                           type="search"
+                           name="keyword"
+                           placeholder="T&#234;n phim ho&#7863;c slug"
+                           autocomplete="off">
+                </label>
+                <button class="admin-primary-btn" type="submit">
+                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                    <span>T&#236;m</span>
+                </button>
+            </form>
+
+            <div class="admin-results-bar">
+                <span data-admin-result-count>Ch&#432;a c&#243; k&#7871;t qu&#7843;</span>
+            </div>
+
+            <div class="admin-results-grid" data-admin-results>
+                <div class="admin-empty-state">
+                    <i class="fa-solid fa-film" aria-hidden="true"></i>
+                    <span>T&#236;m phim t&#7915; API</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="admin-workspace admin-workspace--selected">
+            <div class="admin-workspace-head">
+                <div class="admin-workspace-title">
+                    <span class="admin-panel-icon">
+                        <i class="fa-solid fa-torii-gate" aria-hidden="true"></i>
+                    </span>
+                    <span>
+                        <span class="admin-panel-eyebrow">Home</span>
+                        <h2>Danh s&#225;ch hi&#7875;n th&#7883;</h2>
+                    </span>
+                </div>
+                <div class="admin-count-pill">
+                    <strong data-admin-selected-count>0</strong>
+                    <span>phim</span>
+                </div>
+            </div>
+
+            <div class="admin-selected-toolbar">
+                <div class="admin-toolbar-stats">
+                    <span>
+                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                        <strong data-admin-enabled-count>0</strong>
+                        &#273;ang b&#7853;t
+                    </span>
+                    <span>
+                        <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                        <strong data-admin-disabled-count>0</strong>
+                        &#273;ang &#7849;n
+                    </span>
+                </div>
+                <button class="admin-ghost-btn" type="button" data-admin-save-order>
+                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                    <span>L&#432;u</span>
+                </button>
+            </div>
+
+            <div class="admin-selected-list" data-admin-selected-list>
+                <div class="admin-empty-state">
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span>Ch&#432;a ch&#7885;n phim</span>
+                </div>
+            </div>
+        </section>
+    </section>
+</main>
+
+<th:block th:replace="~{layouts/footer :: siteFooter}"></th:block>
+
+<script th:src="@{/js/main.js}"></script>
+<script th:src="@{/js/admin-movies.js}"></script>
+</body>
+</html>

@@ -7,7 +7,13 @@
     <link rel="preconnect" href="https://img.phimapi.com">
     <link rel="preconnect" href="https://img.ophim.live">
     <link rel="preconnect" href="https://image.tmdb.org">
-    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/home.css}">
+    <link rel="stylesheet" th:href="@{/css/feedback.css}">
+    <link rel="stylesheet" th:href="@{/css/components.css}">
+    <link rel="stylesheet" th:href="@{/css/layout.css}">
+    <link rel="stylesheet" th:href="@{/css/responsive.css}">
+    <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -33,17 +39,17 @@
 
             <div class="hero-actions">
                 <a id="heroPlayBtn" class="hero-play-btn" href="/">
-                    <i class="fa-solid fa-play"></i>
+                    <i class="fa-solid fa-play" aria-hidden="true"></i>
                 </a>
                 <div class="hero-action-group">
                     <button id="heroLikeBtn" type="button" class="hero-icon-btn" aria-label="Y&#234;u th&#237;ch">
-                        <i class="fa-solid fa-heart"></i>
+                        <i class="fa-solid fa-heart" aria-hidden="true"></i>
                     </button>
                     <button id="heroShareBtn" type="button" class="hero-icon-btn hero-share-btn" aria-label="Chia s&#7867;">
-                        <i class="fa-solid fa-share-nodes"></i>
+                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
                     </button>
                     <a id="heroInfoBtn" class="hero-icon-btn hero-info-btn" href="/" aria-label="Th&#244;ng tin">
-                        <i class="fa-solid fa-circle-info"></i>
+                        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
                     </a>
                 </div>
             </div>
@@ -57,11 +63,11 @@
 <main class="main-content">
     <section class="movie-section" id="section-phim-moi">
         <div class="section-header">
-            <h2><i class="fa-solid fa-fire"></i> Phim M&#7899;i C&#7853;p Nh&#7853;t</h2>
-            <a th:href="@{/danh-muc/phim-moi}" href="/danh-muc/phim-moi" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right"></i></a>
+            <h2><i class="fa-solid fa-fire" aria-hidden="true"></i> Phim M&#7899;i C&#7853;p Nh&#7853;t</h2>
+            <a th:href="@{/danh-muc/phim-moi}" href="/danh-muc/phim-moi" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
         </div>
         <div class="movie-grid" id="phimMoiGrid">
-            <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> &#272;ang t&#7843;i...</div>
+            <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> &#272;ang t&#7843;i...</div>
         </div>
     </section>
 
@@ -78,31 +84,50 @@
                 </p>
             </div>
             <div class="vn-section-actions">
-                <a th:href="@{/quoc-gia/viet-nam}" href="/quoc-gia/viet-nam" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right"></i></a>
+                <a th:href="@{/quoc-gia/viet-nam}" href="/quoc-gia/viet-nam" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
         <div class="movie-grid" id="phimVietNamGrid">
-            <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> &#272;ang t&#7843;i...</div>
+            <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> &#272;ang t&#7843;i...</div>
         </div>
     </section>
 
     <section class="movie-section" id="section-phim-le">
         <div class="section-header">
-            <h2><i class="fa-solid fa-clapperboard"></i> Phim L&#7867;</h2>
-            <a th:href="@{/danh-muc/phim-le}" href="/danh-muc/phim-le" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right"></i></a>
+            <h2><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Phim L&#7867;</h2>
+            <a th:href="@{/danh-muc/phim-le}" href="/danh-muc/phim-le" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
         </div>
         <div class="movie-grid" id="phimLeGrid">
-            <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> &#272;ang t&#7843;i...</div>
+            <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> &#272;ang t&#7843;i...</div>
+        </div>
+    </section>
+
+    <section class="movie-section japan-maze-section" id="section-phim-nhat-ban">
+        <div class="japan-maze-header section-header">
+            <h2><i class="fa-solid fa-torii-gate" aria-hidden="true"></i> M&#234; Cung Phim Nh&#7853;t</h2>
+        </div>
+        <div class="japan-maze-carousel">
+            <div class="japan-maze-strip" id="phimNhatBanMaze">
+                <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> &#272;ang t&#7843;i...</div>
+            </div>
+            <div class="japan-maze-controls" hidden aria-label="Chuy&#7875;n phim trong M&#234; Cung Phim Nh&#7853;t">
+                <button type="button" class="japan-maze-nav" data-japan-maze-prev aria-label="Phim tr&#432;&#7899;c" title="Phim tr&#432;&#7899;c">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="japan-maze-nav" data-japan-maze-next aria-label="Phim ti&#7871;p theo" title="Phim ti&#7871;p theo">
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
         </div>
     </section>
 
     <section class="movie-section" id="section-phim-bo">
         <div class="section-header">
-            <h2><i class="fa-solid fa-tv"></i> Phim B&#7897;</h2>
-            <a th:href="@{/danh-muc/phim-bo}" href="/danh-muc/phim-bo" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right"></i></a>
+            <h2><i class="fa-solid fa-tv" aria-hidden="true"></i> Phim B&#7897;</h2>
+            <a th:href="@{/danh-muc/phim-bo}" href="/danh-muc/phim-bo" class="see-all">Xem t&#7845;t c&#7843; <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
         </div>
         <div class="movie-grid" id="phimBoGrid">
-            <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> &#272;ang t&#7843;i...</div>
+            <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> &#272;ang t&#7843;i...</div>
         </div>
     </section>
 </main>

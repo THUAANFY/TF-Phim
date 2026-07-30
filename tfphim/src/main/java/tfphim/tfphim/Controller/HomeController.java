@@ -16,6 +16,15 @@ import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.web.util.HtmlUtils;
 
 import java.text.Normalizer;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -33,6 +42,21 @@ public class HomeController {
     private static final Logger log = LoggerFactory.getLogger(HomeController.class);
     private static final int EPISODES_PER_PAGE = 100;
     private static final int MAX_LISTING_MOVIES_PER_PAGE = 24;
+    private static final int WEEKLY_TOP_SOURCE_PAGES = 5;
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final List<DateTimeFormatter> MOVIE_DATE_TIME_FORMATTERS = List.of(
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+    );
+    private static final List<DateTimeFormatter> MOVIE_DATE_FORMATTERS = List.of(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    );
     private static final String KK_IMAGE_BASE_URL = "https://img.phimapi.com/";
     private static final String KK_MOVIE_IMAGE_BASE_URL = KK_IMAGE_BASE_URL + "uploads/movies/";
     private static final String OPHIM_IMAGE_BASE_URL = "https://img.ophim.live/";
@@ -303,6 +327,7 @@ public class HomeController {
             model.addAttribute("movieDuration", resolveMovieField(movie, "time", "runtime", "duration"));
             model.addAttribute("movieCountry", resolveMovieField(movie, "country", "countries"));
             model.addAttribute("movieDirector", resolveMovieField(movie, "director", "directors"));
+            model.addAttribute("weeklyTopMovies", buildWeeklyTopMovies(String.valueOf(movie.getOrDefault("slug", slug))));
             model.addAttribute("isTrailerMovie", isTrailerMovie(movie));
             model.addAttribute("episodes", episodes);
             model.addAttribute("showServerCards", showServerCards);
@@ -1050,6 +1075,293 @@ public class HomeController {
         }
 
         return new ArrayList<>(movies.subList(0, MAX_LISTING_MOVIES_PER_PAGE));
+    }
+
+    private List<Map<String, Object>> buildWeeklyTopMovies(String currentSlug) {
+        try {
+            java.util.LinkedHashMap<String, Map<String, Object>> candidates = new java.util.LinkedHashMap<>();
+            String normalizedCurrentSlug = currentSlug == null ? "" : currentSlug.trim().toLowerCase(Locale.ROOT);
+            LocalDate weekStart = LocalDate.now(APP_ZONE).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            LocalDate nextWeekStart = weekStart.plusWeeks(1);
+
+            for (int page = 1; page <= WEEKLY_TOP_SOURCE_PAGES; page++) {
+                addWeeklyTopCandidates(
+                        candidates,
+                        normalizedCurrentSlug,
+                        extractMovieItems(movieApiService.getMoviesData("phim-moi", page), "phim-moi"),
+                        weekStart,
+                        nextWeekStart
+                );
+                addWeeklyTopCandidates(
+                        candidates,
+                        normalizedCurrentSlug,
+                        extractMovieItems(movieApiService.getOphimMoviesData("phim-moi", page), "phim-moi", "ophim"),
+                        weekStart,
+                        nextWeekStart
+                );
+            }
+
+            List<Map<String, Object>> topMovies = new ArrayList<>();
+            for (Map<String, Object> movie : candidates.values()) {
+                if (resolveMovieRatingScore(movie) > 0) {
+                    topMovies.add(movie);
+                }
+            }
+
+            topMovies.sort((first, second) -> {
+                int ratingCompare = Double.compare(resolveMovieRatingScore(second), resolveMovieRatingScore(first));
+                if (ratingCompare != 0) {
+                    return ratingCompare;
+                }
+
+                int activityDateCompare = compareMovieActivityDates(second, first);
+                if (activityDateCompare != 0) {
+                    return activityDateCompare;
+                }
+
+                int yearCompare = Integer.compare(resolveSearchYearScore(second), resolveSearchYearScore(first));
+                if (yearCompare != 0) {
+                    return yearCompare;
+                }
+
+                return resolveFirstMovieText(first, "name")
+                        .compareToIgnoreCase(resolveFirstMovieText(second, "name"));
+            });
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            int limit = Math.min(10, topMovies.size());
+            for (int index = 0; index < limit; index++) {
+                Map<String, Object> item = new HashMap<>(topMovies.get(index));
+                item.put("top_poster_url", resolveTopMoviePosterUrl(item));
+                item.put("top_rating_label", resolveTopMovieRatingLabel(item));
+                item.put("top_episode_label", resolveTopMovieEpisodeLabel(item));
+                item.put("top_original_name", resolveFirstMovieText(item, "original_name", "origin_name"));
+                result.add(item);
+            }
+            return result;
+        } catch (Exception ex) {
+            log.warn("Cannot build weekly top movies", ex);
+            return Collections.emptyList();
+        }
+    }
+
+    private void addWeeklyTopCandidates(
+            java.util.LinkedHashMap<String, Map<String, Object>> candidates,
+            String currentSlug,
+            List<Map<String, Object>> movies,
+            LocalDate weekStart,
+            LocalDate nextWeekStart
+    ) {
+        for (Map<String, Object> movie : movies) {
+            String slug = resolveFirstMovieText(movie, "slug");
+            if (slug.isBlank()) {
+                continue;
+            }
+
+            if (!isMovieActiveInWeek(movie, weekStart, nextWeekStart)) {
+                continue;
+            }
+
+            String key = slug.trim().toLowerCase(Locale.ROOT);
+            if (!currentSlug.isBlank() && currentSlug.equals(key)) {
+                continue;
+            }
+
+            Map<String, Object> existing = candidates.get(key);
+            if (existing == null || shouldReplaceWeeklyTopCandidate(existing, movie)) {
+                candidates.put(key, movie);
+            }
+        }
+    }
+
+    private boolean shouldReplaceWeeklyTopCandidate(Map<String, Object> existing, Map<String, Object> candidate) {
+        double existingRating = resolveMovieRatingScore(existing);
+        double candidateRating = resolveMovieRatingScore(candidate);
+        if (candidateRating != existingRating) {
+            return candidateRating > existingRating;
+        }
+
+        boolean existingHasImage = !resolveTopMoviePosterUrl(existing).isBlank();
+        boolean candidateHasImage = !resolveTopMoviePosterUrl(candidate).isBlank();
+        return candidateHasImage && !existingHasImage;
+    }
+
+    private boolean isMovieActiveInWeek(Map<String, Object> movie, LocalDate weekStart, LocalDate nextWeekStart) {
+        LocalDate activityDate = resolveMovieActivityDate(movie);
+        return activityDate != null && !activityDate.isBefore(weekStart) && activityDate.isBefore(nextWeekStart);
+    }
+
+    private int compareMovieActivityDates(Map<String, Object> first, Map<String, Object> second) {
+        LocalDate firstDate = resolveMovieActivityDate(first);
+        LocalDate secondDate = resolveMovieActivityDate(second);
+        if (firstDate == null && secondDate == null) {
+            return 0;
+        }
+        if (firstDate == null) {
+            return -1;
+        }
+        if (secondDate == null) {
+            return 1;
+        }
+        return firstDate.compareTo(secondDate);
+    }
+
+    private LocalDate resolveMovieActivityDate(Map<String, Object> movie) {
+        for (String key : List.of("modified", "updated", "updated_at", "created", "created_at", "date")) {
+            LocalDate date = parseMovieDateValue(movie.get(key));
+            if (date != null) {
+                return date;
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private LocalDate parseMovieDateValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return parseMovieTimestamp(number.longValue());
+        }
+        if (value instanceof java.util.Date date) {
+            return date.toInstant().atZone(APP_ZONE).toLocalDate();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> dateMap = (Map<String, Object>) map;
+            for (String key : List.of("time", "date", "value", "modified", "updated", "created", "created_at", "updated_at")) {
+                LocalDate date = parseMovieDateValue(dateMap.get(key));
+                if (date != null) {
+                    return date;
+                }
+            }
+            return null;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                LocalDate date = parseMovieDateValue(item);
+                if (date != null) {
+                    return date;
+                }
+            }
+            return null;
+        }
+
+        return parseMovieDateText(String.valueOf(value));
+    }
+
+    private LocalDate parseMovieTimestamp(long timestamp) {
+        if (timestamp <= 0) {
+            return null;
+        }
+
+        long epochMillis = timestamp >= 10_000_000_000L ? timestamp : timestamp * 1000;
+        return Instant.ofEpochMilli(epochMillis).atZone(APP_ZONE).toLocalDate();
+    }
+
+    private LocalDate parseMovieDateText(String value) {
+        String text = value == null ? "" : value.trim();
+        if (text.isBlank() || "null".equalsIgnoreCase(text) || "n/a".equalsIgnoreCase(text)) {
+            return null;
+        }
+
+        if (text.matches("\\d{10,13}")) {
+            try {
+                return parseMovieTimestamp(Long.parseLong(text));
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+
+        try {
+            return Instant.parse(text).atZone(APP_ZONE).toLocalDate();
+        } catch (DateTimeParseException ignored) {
+        }
+
+        try {
+            return OffsetDateTime.parse(text).atZoneSameInstant(APP_ZONE).toLocalDate();
+        } catch (DateTimeParseException ignored) {
+        }
+
+        for (DateTimeFormatter formatter : MOVIE_DATE_TIME_FORMATTERS) {
+            try {
+                return LocalDateTime.parse(text, formatter).atZone(APP_ZONE).toLocalDate();
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        for (DateTimeFormatter formatter : MOVIE_DATE_FORMATTERS) {
+            try {
+                return LocalDate.parse(text, formatter);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        return null;
+    }
+
+    private String resolveTopMoviePosterUrl(Map<String, Object> movie) {
+        String posterUrl = resolveFirstMovieText(movie, "poster_url");
+        if (!posterUrl.isBlank()) {
+            return posterUrl;
+        }
+
+        return resolveFirstMovieText(movie, "thumb_url", "card_image_url");
+    }
+
+    private double resolveMovieRatingScore(Map<String, Object> movie) {
+        String rating = resolveFirstMovieText(
+                movie,
+                "movie_rating",
+                "movie_imdb_rating",
+                "movie_tmdb_rating",
+                "imdb_rating",
+                "tmdb_rating",
+                "rating"
+        );
+        return parseMovieRatingScore(rating);
+    }
+
+    private double parseMovieRatingScore(String value) {
+        String rating = normalizeRatingValue(value);
+        if (rating.isBlank()) {
+            return 0;
+        }
+
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d+(?:[\\.,]\\d+)?").matcher(rating);
+        if (!matcher.find()) {
+            return 0;
+        }
+
+        try {
+            return Double.parseDouble(matcher.group().replace(",", "."));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private String resolveTopMovieRatingLabel(Map<String, Object> movie) {
+        String imdbRating = normalizeRatingValue(resolveFirstMovieText(movie, "movie_imdb_rating", "imdb_rating"));
+        if (!imdbRating.isBlank()) {
+            return "IMDb " + imdbRating;
+        }
+
+        String tmdbRating = normalizeRatingValue(resolveFirstMovieText(movie, "movie_tmdb_rating", "tmdb_rating"));
+        if (!tmdbRating.isBlank()) {
+            return "TMDB " + tmdbRating;
+        }
+
+        String rating = normalizeRatingValue(resolveFirstMovieText(movie, "movie_rating", "rating"));
+        return rating.isBlank() ? "" : "Rating " + rating;
+    }
+
+    private String resolveTopMovieEpisodeLabel(Map<String, Object> movie) {
+        String episode = resolveFirstMovieText(movie, "card_episode_label");
+        if (!episode.isBlank()) {
+            return episode;
+        }
+
+        return resolveCardEpisodeLabel(movie, "phim-moi");
     }
 
     private void appendUniqueMovies(
@@ -1939,7 +2251,7 @@ public class HomeController {
     private String resolveServerCardIcon(String serverName, String serverLabel) {
         String normalized = normalizeLanguageText(serverName + " " + serverLabel);
         if (normalized.contains("thuyet minh")) {
-            return "fa-solid fa-wave-square";
+            return "fa-solid fa-volume-high";
         }
         if (normalized.contains("long tieng")) {
             return "fa-solid fa-bullhorn";

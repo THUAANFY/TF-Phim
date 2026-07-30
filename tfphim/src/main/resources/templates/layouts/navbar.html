@@ -2,7 +2,7 @@
     <nav class="navbar">
         <div class="nav-container">
             <button class="nav-menu-toggle" type="button" aria-label="Mo menu" aria-expanded="false" aria-controls="primaryNav">
-                <i class="fa-solid fa-bars"></i>
+                <i class="fa-solid fa-bars" aria-hidden="true"></i>
             </button>
 
             <a href="/" class="logo" aria-label="TF-Phim">
@@ -12,16 +12,16 @@
 
             <div class="nav-mobile-actions">
                 <a class="nav-icon-btn nav-mobile-bell" th:href="@{/danh-muc/phim-moi}" href="/danh-muc/phim-moi" aria-label="Phim dang chieu">
-                    <i class="fa-solid fa-bell"></i>
+                    <i class="fa-solid fa-bell" aria-hidden="true"></i>
                 </a>
                 <a class="nav-icon-btn nav-mobile-favorite"
                    th:href="@{/yeu-thich}"
                    th:classappend="${favoritePage} ? ' active'"
                    aria-label="Y&#234;u th&#237;ch">
-                    <i class="fa-solid fa-heart"></i>
+                    <i class="fa-solid fa-heart" aria-hidden="true"></i>
                 </a>
                 <button class="nav-icon-btn nav-search-toggle" type="button" aria-label="Mo tim kiem" aria-expanded="false" aria-controls="navSearchBox">
-                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
             </div>
 
@@ -37,7 +37,7 @@
                             aria-haspopup="true"
                             aria-controls="genreMenu">
                         <span>Th&#7875; lo&#7841;i</span>
-                        <i class="fa-solid fa-chevron-down"></i>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                     </button>
                     <div class="nav-dropdown-menu nav-dropdown-menu--genre" id="genreMenu">
                         <a th:each="genre : ${genreOptions}"
@@ -54,7 +54,7 @@
                             aria-haspopup="true"
                             aria-controls="countryMenu">
                         <span>Qu&#7889;c gia</span>
-                        <i class="fa-solid fa-chevron-down"></i>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
                     </button>
                     <div class="nav-dropdown-menu" id="countryMenu">
                         <a th:each="country : ${countryOptions}"
@@ -77,13 +77,13 @@
                                aria-expanded="false"
                                aria-controls="liveSearchPanel">
                         <button id="searchBtn" aria-label="Tìm kiếm">
-                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                         </button>
                     </div>
                     <div class="live-search-panel" id="liveSearchPanel" hidden></div>
                 </div>
                 <button class="nav-search-close" type="button" aria-label="Đóng tìm kiếm">
-                    <i class="fa-solid fa-xmark"></i>
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                 </button>
             </div>
 
@@ -91,7 +91,7 @@
                th:href="@{/yeu-thich}"
                th:classappend="${favoritePage} ? ' active'"
                aria-label="Y&#234;u th&#237;ch">
-                <i class="fa-solid fa-heart"></i>
+                <i class="fa-solid fa-heart" aria-hidden="true"></i>
             </a>
         </div>
     </nav>
