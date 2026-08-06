@@ -1263,7 +1263,9 @@
 .detail-server-section__head {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
     padding: 0 1rem;
     margin: 1.9rem 0;
 }
@@ -1274,6 +1276,20 @@
     line-height: 1.15;
     font-weight: 500;
     letter-spacing: -0.03em;
+}
+
+.detail-server-section__head .episode-source-control {
+    margin-left: auto;
+}
+
+@media (max-width: 768px) {
+    .detail-server-section__head {
+        align-items: flex-start;
+    }
+
+    .detail-server-section__head .episode-source-control {
+        margin-left: 0;
+    }
 }
 
 .detail-server-card {

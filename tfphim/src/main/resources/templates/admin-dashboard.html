@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - TF-Phim'">Dashboard - TF-Phim</title>
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/feedback.css}">
+    <link rel="stylesheet" th:href="@{/css/components.css}">
+    <link rel="stylesheet" th:href="@{/css/layout.css}">
+    <link rel="stylesheet" th:href="@{/css/responsive.css}">
+    <link rel="stylesheet" th:href="@{/css/admin-movies.css}">
+    <link rel="stylesheet" th:href="@{/css/admin-dashboard.css}">
+    <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
+    <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
+</head>
+<body class="admin-movies-body admin-dashboard-body">
+
+<section class="admin-desktop-guard" role="status" aria-live="polite">
+    <article class="admin-desktop-guard__card">
+        <span class="admin-desktop-guard__icon">
+            <i data-lucide="monitor" aria-hidden="true"></i>
+        </span>
+        <span class="admin-desktop-guard__eyebrow">TF-Phim Admin</span>
+        <h1>Ch&#7881; h&#7895; tr&#7907; desktop</h1>
+        <p>Vui l&#242;ng chuy&#7875;n sang desktop &#273;&#7875; s&#7917; d&#7909;ng t&#237;nh n&#259;ng admin.</p>
+    </article>
+</section>
+
+<main class="admin-movies-page admin-dashboard-page" data-admin-dashboard-page>
+    <th:block th:replace="~{layouts/admin-sidebar :: adminSidebar('dashboard')}"></th:block>
+
+    <section class="admin-main">
+        <header class="admin-mainbar">
+            <div class="admin-mainbar-title">
+                <strong>Dashboard</strong>
+                <p>Trung t&#226;m qu&#7843;n tr&#7883; TF-Phim</p>
+            </div>
+
+            <div class="admin-main-actions">
+                <a class="admin-preview-link" href="/">
+                    <i data-lucide="eye" aria-hidden="true"></i>
+                    <span>Xem trang ch&#7911;</span>
+                </a>
+            </div>
+        </header>
+
+        <section class="admin-dashboard-content" aria-label="Cac muc quan tri">
+            <div class="admin-dashboard-head">
+                <span class="admin-dashboard-kicker">TF-Phim Admin</span>
+                <h1>C&#225;c m&#7909;c qu&#7843;n tr&#7883;</h1>
+                <p>Ch&#7885;n khu v&#7921;c c&#7847;n c&#7853;p nh&#7853;t.</p>
+            </div>
+
+            <div class="admin-dashboard-grid">
+                <a class="admin-dashboard-card"
+                   th:each="card : ${adminCards}"
+                   th:classappend="${' admin-dashboard-card--' + card['accent']}"
+                   th:href="${card['href']}">
+                    <span class="admin-dashboard-card__icon">
+                        <i th:attr="data-lucide=${card['icon']}" aria-hidden="true"></i>
+                    </span>
+                    <span class="admin-dashboard-card__text">
+                        <small th:text="${card['subtitle']}">Section</small>
+                        <strong th:text="${card['title']}">Muc quan tri</strong>
+                    </span>
+                    <span class="admin-dashboard-card__stats">
+                        <strong th:text="${card['statValue']}">0 phim</strong>
+                        <small th:text="${card['statLabel']}">San sang</small>
+                    </span>
+                    <span class="admin-dashboard-card__arrow" aria-hidden="true">
+                        <i data-lucide="arrow-right" aria-hidden="true"></i>
+                    </span>
+                </a>
+            </div>
+        </section>
+    </section>
+</main>
+
+<script th:src="@{/js/lucide.min.js}"></script>
+<script th:src="@{/js/admin-dashboard.js}"></script>
+<script th:src="@{/js/admin-shell.js}"></script>
+</body>
+</html>

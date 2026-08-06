@@ -25,6 +25,22 @@ function faIcon(iconName, className = "") {
     return `<i class="${classes}" aria-hidden="true"></i>`;
 }
 
+function toastIcon(type) {
+    if (type === "close" || type === "error") {
+        return `
+            <svg class="app-toast__svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+        `;
+    }
+
+    return `
+        <svg class="app-toast__svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12.5l4.2 4.2L19 7"></path>
+        </svg>
+    `;
+}
+
 async function getJson(url) {
     const response = await fetch(url, {
         headers: {
@@ -87,11 +103,11 @@ function showToast(message, type = "success") {
     toast.setAttribute("aria-live", "polite");
     toast.innerHTML = `
         <span class="app-toast__icon">
-            ${faIcon(type === "error" ? "fa-xmark" : "fa-check")}
+            ${toastIcon(type === "error" ? "error" : "success")}
         </span>
         <span class="app-toast__message">${escapeHtml(message)}</span>
         <button class="app-toast__close" type="button" aria-label="Dong thong bao">
-            ${faIcon("fa-xmark")}
+            ${toastIcon("close")}
         </button>
         <span class="app-toast__progress" aria-hidden="true"></span>
     `;
@@ -178,22 +194,146 @@ function mergeSearchResults(movies) {
         return [];
     }
 
-    const moviesByKey = new Map();
+    const mergedMovies = [];
     movies.forEach((movie) => {
-        const slug = String(movie?.slug ?? "").trim();
-        const name = normalizeSearchText(movie?.name);
-        const key = slug || name;
-        if (!key) {
+        const candidate = withSourceMetadata(movie);
+        const existingIndex = mergedMovies.findIndex((existing) => isSameSearchMovie(existing, candidate));
+        if (existingIndex >= 0) {
+            mergedMovies[existingIndex] = mergeSearchMovieData(mergedMovies[existingIndex], candidate);
             return;
         }
 
-        const existingMovie = moviesByKey.get(key);
-        if (!existingMovie || compareSearchPriority(movie, existingMovie) < 0) {
-            moviesByKey.set(key, movie);
-        }
+        mergedMovies.push(candidate);
     });
 
-    return Array.from(moviesByKey.values());
+    return mergedMovies;
+}
+
+function withSourceMetadata(movie) {
+    const source = normalizeSourceParam(movie?.source);
+    const slug = String(movie?.slug || "").trim();
+    return {
+        ...movie,
+        source,
+        detail_url: movie?.detail_url || buildMovieDetailUrl(slug, source)
+    };
+}
+
+function mergeSearchMovieData(existing, candidate) {
+    const preferred = compareSearchPriority(candidate, existing) < 0 ? candidate : existing;
+    const fallback = preferred === candidate ? existing : candidate;
+    const sourceOptions = mergeSourceOptions(existing.source_options, candidate.source_options, existing, candidate);
+    return {
+        ...fallback,
+        ...preferred,
+        source_options: sourceOptions,
+        source_count: sourceOptions.length || 1
+    };
+}
+
+function mergeSourceOptions(firstOptions, secondOptions, firstMovie, secondMovie) {
+    const result = [];
+    [firstOptions, secondOptions].forEach((options) => {
+        if (Array.isArray(options)) {
+            options.forEach((option) => addSourceOption(result, option));
+        }
+    });
+    addSourceOption(result, movieToSourceOption(firstMovie));
+    addSourceOption(result, movieToSourceOption(secondMovie));
+    return result;
+}
+
+function movieToSourceOption(movie) {
+    const source = normalizeSourceParam(movie?.source);
+    const slug = String(movie?.slug || "").trim();
+    return {
+        source,
+        label: source === "ophim" ? "OPhim" : "KK",
+        slug,
+        detail_url: buildMovieDetailUrl(slug, source)
+    };
+}
+
+function addSourceOption(target, option) {
+    const source = normalizeSourceParam(option?.source);
+    const slug = String(option?.slug || "").trim();
+    if (!source || target.some((item) => item.source === source)) {
+        return;
+    }
+    target.push({
+        ...option,
+        source,
+        label: option?.label || (source === "ophim" ? "OPhim" : "KK"),
+        slug,
+        detail_url: option?.detail_url || buildMovieDetailUrl(slug, source)
+    });
+}
+
+function isSameSearchMovie(first, second) {
+    const firstSlug = normalizeMovieIdentity(first?.slug);
+    const secondSlug = normalizeMovieIdentity(second?.slug);
+    if (firstSlug && firstSlug === secondSlug) {
+        return true;
+    }
+
+    const firstYear = String(getMovieYear(first) || "").match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/)?.[1] || "";
+    const secondYear = String(getMovieYear(second) || "").match(/\b(18\d{2}|19\d{2}|20\d{2}|21\d{2})\b/)?.[1] || "";
+    if (firstYear && secondYear && firstYear !== secondYear) {
+        return false;
+    }
+
+    const firstTitles = getMovieIdentityTitles(first);
+    const secondTitles = getMovieIdentityTitles(second);
+    const exactTitle = firstTitles.some((title) => secondTitles.includes(title));
+    if (!exactTitle) {
+        return false;
+    }
+
+    if (firstYear || secondYear) {
+        return true;
+    }
+
+    const firstOriginal = normalizeMovieIdentity(getMovieOriginalName(first));
+    const secondOriginal = normalizeMovieIdentity(getMovieOriginalName(second));
+    if (firstOriginal && secondOriginal) {
+        return firstOriginal === secondOriginal;
+    }
+
+    return firstTitles.some((title) => title.length >= 10 || title.split(" ").filter((token) => token.length > 1).length >= 3);
+}
+
+function getMovieIdentityTitles(movie) {
+    return [movie?.name, getMovieOriginalName(movie)]
+        .map(normalizeMovieIdentity)
+        .filter((title, index, titles) => title.length >= 3 && titles.indexOf(title) === index);
+}
+
+function normalizeMovieIdentity(value) {
+    return normalizeSearchText(value)
+        .replace(/\b(tmdb|imdb|vietsub|thuyet minh|long tieng|phu de|hd|fhd|full|trailer)\b/g, " ")
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeSourceParam(source) {
+    const normalized = String(source || "").trim().toLowerCase();
+    if (normalized === "ophim" || normalized.includes("ophim")) {
+        return "ophim";
+    }
+    if (normalized === "kk" || normalized === "kkphim" || normalized.includes("phimapi")) {
+        return "kk";
+    }
+    return "";
+}
+
+function buildMovieDetailUrl(slug, source = "") {
+    if (!slug) {
+        return "";
+    }
+    const sourceKey = normalizeSourceParam(source);
+    const baseUrl = `/phim/${encodeURIComponent(slug)}`;
+    return sourceKey ? `${baseUrl}?source=${encodeURIComponent(sourceKey)}` : baseUrl;
 }
 
 function compareSearchPriority(first, second) {
@@ -292,8 +432,10 @@ function normalizeSearchText(value) {
         .trim();
 }
 
-async function fetchMovieDetail(slug) {
-    const data = await getJson(`${API_BASE}/${encodeURIComponent(slug)}`);
+async function fetchMovieDetail(slug, source = "") {
+    const sourceKey = normalizeSourceParam(source);
+    const params = sourceKey ? `?source=${encodeURIComponent(sourceKey)}` : "";
+    const data = await getJson(`${API_BASE}/${encodeURIComponent(slug)}${params}`);
     return extractMovieDetail(data);
 }
 
@@ -475,6 +617,11 @@ function resolveMovieLogoUrl(url, source = "") {
 
 function getMovieLogoUrl(movie) {
     const candidates = [
+        movie?.tmdb_logo_url,
+        movie?.tmdbLogoUrl,
+        movie?.tmdb?.logo_url,
+        movie?.tmdb?.logoUrl,
+        movie?.tmdb?.logo_path,
         movie?.logo_url,
         movie?.logoUrl,
         movie?.movie_logo,
@@ -483,12 +630,7 @@ function getMovieLogoUrl(movie) {
         movie?.titleLogo,
         movie?.clear_logo,
         movie?.clearLogo,
-        movie?.clearlogo,
-        movie?.tmdb_logo_url,
-        movie?.tmdbLogoUrl,
-        movie?.tmdb?.logo_url,
-        movie?.tmdb?.logoUrl,
-        movie?.tmdb?.logo_path
+        movie?.clearlogo
     ];
 
     const logo = movie?.logo;
@@ -765,6 +907,8 @@ function getMovieCategoryLine(movie, limit = 3) {
 function createMovieDatasetAttributes(movie) {
     return [
         ["slug", movie.slug || ""],
+        ["source", normalizeSourceParam(movie.source) || ""],
+        ["detail-url", movie.detail_url || buildMovieDetailUrl(movie.slug || "", movie.source)],
         ["name", movie.name || ""],
         ["original-name", getMovieOriginalName(movie)],
         ["thumb", movie.thumb_url || ""],
@@ -808,7 +952,9 @@ function readMovieDataFromCard(card) {
         trailer_url: card.dataset.trailerUrl || "",
         movie_rating: card.dataset.rating || "",
         movie_imdb_rating: card.dataset.imdbRating || "",
-        movie_tmdb_rating: card.dataset.tmdbRating || ""
+        movie_tmdb_rating: card.dataset.tmdbRating || "",
+        source: normalizeSourceParam(card.dataset.source || ""),
+        detail_url: card.dataset.detailUrl || ""
     };
 }
 
@@ -822,6 +968,9 @@ function mergeMovieData(baseMovie, detailMovie) {
         thumb_url: detailMovie.thumb_url || baseMovie.thumb_url,
         poster_url: detailMovie.poster_url || baseMovie.poster_url,
         card_image_url: detailMovie.card_image_url || baseMovie.card_image_url,
+        tmdb_thumb_url: detailMovie.tmdb_thumb_url || baseMovie.tmdb_thumb_url,
+        tmdb_backdrop_url: detailMovie.tmdb_backdrop_url || baseMovie.tmdb_backdrop_url,
+        tmdb_logo_url: detailMovie.tmdb_logo_url || baseMovie.tmdb_logo_url,
         quality: detailMovie.quality || baseMovie.quality,
         episode_current: detailMovie.episode_current || detailMovie.current_episode || baseMovie.episode_current,
         current_episode: detailMovie.current_episode || detailMovie.episode_current || baseMovie.current_episode,
@@ -834,7 +983,9 @@ function mergeMovieData(baseMovie, detailMovie) {
         trailer_url: detailMovie.trailer_url || baseMovie.trailer_url,
         movie_rating: getMovieRating(detailMovie) || getMovieRating(baseMovie),
         movie_imdb_rating: getMovieImdbRating(detailMovie) || getMovieImdbRating(baseMovie),
-        movie_tmdb_rating: getMovieTmdbRating(detailMovie) || getMovieTmdbRating(baseMovie)
+        movie_tmdb_rating: getMovieTmdbRating(detailMovie) || getMovieTmdbRating(baseMovie),
+        source: normalizeSourceParam(detailMovie.source) || normalizeSourceParam(baseMovie.source),
+        detail_url: detailMovie.detail_url || baseMovie.detail_url
     };
 }
 
@@ -927,7 +1078,7 @@ function createMovieCard(movie, listingType = "", index = 0) {
     const ratingBadges = createRatingBadges(movie);
     const slug = movie.slug || "";
     const languageBadges = getLanguageBadges(getMovieLanguageBadgeSource(movie));
-    const href = slug ? `/phim/${encodeURIComponent(slug)}` : "#";
+    const href = slug ? (movie.detail_url || buildMovieDetailUrl(slug, movie.source)) : "#";
     const disabledClass = slug ? "" : " is-disabled";
     const datasetAttrs = createMovieDatasetAttributes(movie);
     const isPriorityImage = index < 6;
@@ -1038,7 +1189,7 @@ function renderHeroTitle(heroTitle, movieName, logoUrl) {
 
 function renderHeroThumbs(movies, activeIndex) {
     return movies.map((movie, index) => {
-        const thumb = resolveMovieImageUrl(movie.thumb_url, movie.source) || resolveMovieImageUrl(movie.poster_url, movie.source) || "https://via.placeholder.com/160x90?text=No+Image";
+        const thumb = resolveMovieLogoUrl(movie.tmdb_thumb_url || movie.tmdb_backdrop_url, movie.source) || resolveMovieImageUrl(movie.thumb_url, movie.source) || resolveMovieImageUrl(movie.poster_url, movie.source) || "https://via.placeholder.com/160x90?text=No+Image";
         const name = movie.name || "Phim nổi bật";
         return `
             <button type="button" class="hero-thumb ${index === activeIndex ? "is-active" : ""}" data-hero-index="${index}" aria-label="${escapeHtml(name)}">
@@ -1046,6 +1197,20 @@ function renderHeroThumbs(movies, activeIndex) {
             </button>
         `;
     }).join("");
+}
+
+async function fetchManagedHeroBannerMovies() {
+    try {
+        const data = await getJson("/api/quan-ly-phim/hero-banner?enabledOnly=true");
+        if (data?.enabled === false) {
+            return [];
+        }
+        const items = getMovieItems(data);
+        return items.slice(0, 6);
+    } catch (error) {
+        console.warn("Load managed hero banner failed:", error);
+        return [];
+    }
 }
 
 async function loadHeroSlider() {
@@ -1068,7 +1233,8 @@ async function loadHeroSlider() {
     const heroCopy = byId("heroCopy");
 
     try {
-        const items = (await fetchMovies("phim-moi")).slice(0, 6);
+        const managedHeroMovies = await fetchManagedHeroBannerMovies();
+        const items = managedHeroMovies.length ? managedHeroMovies : (await fetchMovies("phim-moi")).slice(0, 6);
         if (!items.length) {
             return;
         }
@@ -1097,7 +1263,8 @@ async function loadHeroSlider() {
         `;
 
         const getHeroImage = (movie) => (
-            resolveMovieImageUrl(movie?.thumb_url, movie?.source)
+            resolveMovieLogoUrl(movie?.tmdb_thumb_url || movie?.tmdb_backdrop_url, movie?.source)
+            || resolveMovieImageUrl(movie?.thumb_url, movie?.source)
             || resolveMovieImageUrl(movie?.poster_url, movie?.source)
             || "https://via.placeholder.com/1280x720?text=No+Image"
         );
@@ -1166,13 +1333,19 @@ async function loadHeroSlider() {
                 syncFavoriteButton(heroLikeBtn, movie);
             }
             if (heroThumbs) {
-                heroThumbs.innerHTML = renderHeroThumbs(items, activeIndex);
-                heroThumbs.querySelectorAll("[data-hero-index]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        renderSlide(Number(button.dataset.heroIndex));
-                        restartAutoRotate();
+                if (items.length <= 1) {
+                    heroThumbs.hidden = true;
+                    heroThumbs.innerHTML = "";
+                } else {
+                    heroThumbs.hidden = false;
+                    heroThumbs.innerHTML = renderHeroThumbs(items, activeIndex);
+                    heroThumbs.querySelectorAll("[data-hero-index]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            renderSlide(Number(button.dataset.heroIndex));
+                            restartAutoRotate();
+                        });
                     });
-                });
+                }
             }
         };
 
@@ -1185,7 +1358,7 @@ async function loadHeroSlider() {
                 return mergeMovieData(movie, await heroDetailCache.get(movie.slug));
             }
 
-            const detailRequest = fetchMovieDetail(movie.slug)
+            const detailRequest = fetchMovieDetail(movie.slug, movie.source)
                 .then((detailMovie) => {
                     const resolvedDetailMovie = detailMovie || {};
                     heroDetailCache.set(movie.slug, resolvedDetailMovie);
@@ -1387,6 +1560,9 @@ async function loadHeroSlider() {
         };
 
         const startAutoRotate = () => {
+            if (items.length <= 1) {
+                return;
+            }
             autoRotateId = window.setInterval(() => {
                 renderSlide((activeIndex + 1) % items.length);
             }, autoplayDelay);
@@ -1921,10 +2097,11 @@ function bindMovieHoverPopup(root = document) {
             popup.style.visibility = "";
 
             try {
-                const cachedDetail = detailCache.get(baseMovie.slug);
-                const detailMovie = cachedDetail || await fetchMovieDetail(baseMovie.slug);
+                const detailCacheKey = `${baseMovie.source || ""}|${baseMovie.slug}`;
+                const cachedDetail = detailCache.get(detailCacheKey);
+                const detailMovie = cachedDetail || await fetchMovieDetail(baseMovie.slug, baseMovie.source);
                 if (!cachedDetail) {
-                    detailCache.set(baseMovie.slug, detailMovie);
+                    detailCache.set(detailCacheKey, detailMovie);
                 }
 
                 if (activeCard !== card) {
@@ -1962,9 +2139,11 @@ function bindMovieHoverPopup(root = document) {
             }, 850);
 
             const slug = card.dataset.slug;
-            if (slug && !detailCache.has(slug)) {
-                fetchMovieDetail(slug)
-                    .then((detailMovie) => detailCache.set(slug, detailMovie))
+            const source = normalizeSourceParam(card.dataset.source || "");
+            const detailCacheKey = `${source || ""}|${slug}`;
+            if (slug && !detailCache.has(detailCacheKey)) {
+                fetchMovieDetail(slug, source)
+                    .then((detailMovie) => detailCache.set(detailCacheKey, detailMovie))
                     .catch((error) => console.error("Preload movie hover detail failed:", error));
             }
         };
@@ -2898,6 +3077,17 @@ function bindEpisodeServerDropdowns() {
     });
 }
 
+function bindMovieSourceSelects() {
+    document.querySelectorAll("[data-movie-source-select]").forEach((select) => {
+        select.addEventListener("change", () => {
+            const targetUrl = select.value;
+            if (targetUrl) {
+                window.location.href = targetUrl;
+            }
+        });
+    });
+}
+
 function bindCategoryLinks() {
     const sectionTargets = {
         "phim-moi": "section-phim-moi",
@@ -3184,6 +3374,7 @@ document.addEventListener("DOMContentLoaded", () => {
     runInitSafely("bindEpisodePartDropdownV2", bindEpisodePartDropdownV2);
     runInitSafely("bindEpisodeBrowser", bindEpisodeBrowser);
     runInitSafely("bindEpisodeServerDropdowns", bindEpisodeServerDropdowns);
+    runInitSafely("bindMovieSourceSelects", bindMovieSourceSelects);
     runInitSafely("bindMobileNavbar", bindMobileNavbar);
     runInitSafely("bindMobileDetailInfoToggle", bindMobileDetailInfoToggle);
     runInitSafely("bindDesktopNavbarDropdown", bindDesktopNavbarDropdown);

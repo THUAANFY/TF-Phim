@@ -8,25 +8,63 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     overflow-x: hidden;
 }
 
 body > main,
 body > .main-content {
+    width: 100%;
     flex: 1 0 auto;
     min-height: 0;
 }
 
 body > .hero {
+    width: 100%;
     flex: 0 0 auto;
 }
 
 body.admin-movies-body .admin-movies-page {
-    padding-bottom: 0;
+    padding-bottom: 0.85rem;
 }
 
 body > .site-footer {
+    width: 100%;
     flex: 0 0 auto;
+}
+
+body.home-page .movie-section,
+body.home-page .section-header,
+body.home-page .movie-grid,
+body.home-page .japan-maze-strip {
+    width: 100%;
+    min-width: 0;
+}
+
+body.home-page .movie-grid > .loading-spinner,
+body.home-page .japan-maze-strip > .loading-spinner {
+    box-sizing: border-box;
+}
+
+body.home-page .movie-grid > .loading-spinner {
+    width: auto;
+    min-width: 0;
+    justify-self: stretch;
+}
+
+body.home-page .japan-maze-strip > .loading-spinner {
+    flex: 1 0 100%;
+    min-width: 100%;
+}
+
+@media (min-width: 769px) {
+    body.home-page .movie-grid > .loading-spinner,
+    body.home-page .japan-maze-strip > .loading-spinner {
+        min-height: clamp(320px, 30vw, 540px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }
 
 .category-page,

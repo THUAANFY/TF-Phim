@@ -15,6 +15,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +25,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class MovieApiService {
     private static final int DEFAULT_LIST_LIMIT = 24;
+    private static final int SEARCH_FALLBACK_PAGE_COUNT = 3;
+    private static final int SEARCH_RECENT_FALLBACK_PAGE_COUNT = 6;
+    private static final int SEARCH_FALLBACK_ITEM_LIMIT = 72;
+    private static final int SEARCH_FALLBACK_VARIANT_LIMIT = 8;
     private static final long MOVIE_LIST_TTL_MILLIS = 60 * 1000;
-    private static final long MOVIE_DETAIL_TTL_MILLIS = 2 * 60 * 1000;
-    private static final long SEARCH_TTL_MILLIS = 30 * 1000;
+    private static final long MOVIE_DETAIL_TTL_MILLIS = 10 * 60 * 1000;
+    private static final long SEARCH_TTL_MILLIS = 2 * 60 * 1000;
     private static final long TEXT_RESPONSE_TTL_MILLIS = 20 * 1000;
     private static final long COUNTRY_LIST_TTL_MILLIS = 10 * 60 * 1000;
     private static final long GENRE_LIST_TTL_MILLIS = 10 * 60 * 1000;
@@ -119,8 +124,87 @@ public class MovieApiService {
     }
 
     public String searchMovies(String keyword, int page) {
-        String url = kkBaseUrl + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
-        String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(keyword, StandardCharsets.UTF_8);
+        return searchMoviesWithFallback(keyword, page, false);
+    }
+
+    public String searchOphimMovies(String keyword, int page) {
+        return searchMoviesWithFallback(keyword, page, true);
+    }
+
+    private String searchMoviesWithFallback(String keyword, int page, boolean ophimSource) {
+        int safePage = Math.max(page, 1);
+        String primaryResponse = fetchSearchPage(keyword, safePage, ophimSource);
+        if (safePage > 1) {
+            return primaryResponse;
+        }
+
+        Map<String, Object> primaryPayload = parseJsonObject(primaryResponse);
+        LinkedHashMap<String, Map<String, Object>> mergedItems = new LinkedHashMap<>();
+        appendSearchItems(mergedItems, primaryPayload);
+
+        if (!shouldRunSearchFallback(mergedItems, keyword)) {
+            return buildSearchResponse(primaryPayload, mergedItems, keyword, ophimSource);
+        }
+
+        for (String searchKeyword : buildSearchKeywordVariants(keyword)) {
+            if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                break;
+            }
+            for (int fallbackPage = 1; fallbackPage <= SEARCH_FALLBACK_PAGE_COUNT; fallbackPage++) {
+                if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                    break;
+                }
+                if (fallbackPage == 1 && normalizeQueryText(searchKeyword).equals(normalizeQueryText(keyword))) {
+                    continue;
+                }
+                appendSearchItems(
+                        mergedItems,
+                        parseJsonObject(fetchSearchPage(searchKeyword, fallbackPage, ophimSource))
+                );
+            }
+        }
+
+        appendRecentUpdateFallbackItems(mergedItems, keyword, ophimSource);
+        appendDetailFallbackItems(mergedItems, keyword, ophimSource);
+        return buildSearchResponse(primaryPayload, mergedItems, keyword, ophimSource);
+    }
+
+    private boolean shouldRunSearchFallback(LinkedHashMap<String, Map<String, Object>> primaryItems, String keyword) {
+        if (primaryItems.isEmpty()) {
+            return true;
+        }
+
+        List<String> strictQueries = buildStrictSearchMatchQueries(keyword);
+        if (strictQueries.isEmpty()) {
+            return false;
+        }
+
+        for (Map<String, Object> item : primaryItems.values()) {
+            if (matchesRecentFallbackKeyword(item, strictQueries)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private List<String> buildStrictSearchMatchQueries(String keyword) {
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        addRecentFallbackMatchQuery(queries, keyword);
+        String normalized = normalizeMatchText(keyword);
+        if (!normalized.isBlank()) {
+            addRecentFallbackMatchQuery(queries, normalized.replaceAll("\\s+", "-"));
+        }
+        return new ArrayList<>(queries);
+    }
+
+    private String fetchSearchPage(String keyword, int page, boolean ophimSource) {
+        String baseUrl = ophimSource ? ophimBaseUrl : kkBaseUrl;
+        String url = baseUrl + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
+        String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(
+                keyword == null ? "" : keyword.trim(),
+                StandardCharsets.UTF_8
+        );
         return fetchCachedJson(
                 url.replace("{keyword}", encodedKeyword).replace("{page}", String.valueOf(Math.max(page, 1))),
                 searchCache,
@@ -128,14 +212,318 @@ public class MovieApiService {
         );
     }
 
-    public String searchOphimMovies(String keyword, int page) {
-        String url = ophimBaseUrl + "/v1/api/tim-kiem?keyword={keyword}&page={page}&limit=" + DEFAULT_LIST_LIMIT;
-        String encodedKeyword = org.springframework.web.util.UriUtils.encodeQueryParam(keyword, StandardCharsets.UTF_8);
-        return fetchCachedJson(
-                url.replace("{keyword}", encodedKeyword).replace("{page}", String.valueOf(Math.max(page, 1))),
-                searchCache,
-                SEARCH_TTL_MILLIS
+    private List<String> buildSearchKeywordVariants(String keyword) {
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        String normalizedKeyword = normalizeQueryText(keyword);
+        addSearchKeywordVariant(variants, normalizedKeyword);
+        addSearchKeywordVariant(variants, stripTmdbBracketText(normalizedKeyword));
+        addSearchKeywordVariant(variants, removeTmdbTitleNoise(normalizedKeyword));
+
+        String matchText = normalizeMatchText(normalizedKeyword);
+        addSearchKeywordVariant(variants, matchText);
+        addSearchKeywordVariant(variants, matchText.replaceAll("\\s+", "-"));
+
+        for (String part : normalizedKeyword.split("\\s+(?:-|\\u2013|\\u2014)\\s+|\\s*[:|/]\\s*")) {
+            addSearchKeywordVariant(variants, part);
+            addSearchKeywordVariant(variants, removeTmdbTitleNoise(part));
+            String normalizedPart = normalizeMatchText(part);
+            addSearchKeywordVariant(variants, normalizedPart);
+            addSearchKeywordVariant(variants, normalizedPart.replaceAll("\\s+", "-"));
+        }
+
+        return variants.stream()
+                .limit(SEARCH_FALLBACK_VARIANT_LIMIT)
+                .toList();
+    }
+
+    private void addSearchKeywordVariant(LinkedHashSet<String> variants, String keyword) {
+        String normalized = normalizeQueryText(keyword);
+        if (normalized.length() >= 2) {
+            variants.add(normalized);
+        }
+    }
+
+    private void appendSearchItems(
+            LinkedHashMap<String, Map<String, Object>> mergedItems,
+            Map<String, Object> payload
+    ) {
+        for (Map<String, Object> item : extractSearchItems(payload)) {
+            appendSearchItem(mergedItems, item);
+            if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                return;
+            }
+        }
+    }
+
+    private void appendSearchItem(
+            LinkedHashMap<String, Map<String, Object>> mergedItems,
+            Map<String, Object> item
+    ) {
+        if (item == null || item.isEmpty()) {
+            return;
+        }
+
+        String key = searchItemKey(item);
+        if (key.isBlank() || mergedItems.containsKey(key)) {
+            return;
+        }
+        mergedItems.put(key, new LinkedHashMap<>(item));
+    }
+
+    private String searchItemKey(Map<String, Object> item) {
+        String slug = normalizeQueryText(String.valueOf(item.getOrDefault("slug", ""))).toLowerCase();
+        if (!slug.isBlank()) {
+            return slug;
+        }
+        return normalizeMatchText(String.valueOf(item.getOrDefault("name", item.getOrDefault("title", ""))));
+    }
+
+    private List<Map<String, Object>> extractSearchItems(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Object directItems = payload.get("items");
+        if (directItems instanceof List<?>) {
+            return safeMapList(directItems);
+        }
+
+        Object rawData = payload.get("data");
+        if (rawData instanceof Map<?, ?> dataMapRaw) {
+            Map<String, Object> dataMap = safeMap(dataMapRaw);
+            Object dataItems = dataMap.get("items");
+            if (dataItems instanceof List<?>) {
+                return safeMapList(dataItems);
+            }
+        }
+
+        if (rawData instanceof List<?>) {
+            return safeMapList(rawData);
+        }
+
+        return Collections.emptyList();
+    }
+
+    private void appendDetailFallbackItems(
+            LinkedHashMap<String, Map<String, Object>> mergedItems,
+            String keyword,
+            boolean ophimSource
+    ) {
+        for (String slug : buildDetailSlugCandidates(keyword)) {
+            if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                return;
+            }
+            try {
+                Map<String, Object> payload = parseJsonObject(
+                        ophimSource ? getOphimMovieDetail(slug) : getMovieDetail(slug)
+                );
+                Map<String, Object> movie = extractDetailMovie(payload);
+                if (!movie.isEmpty()) {
+                    appendSearchItem(mergedItems, movie);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void appendRecentUpdateFallbackItems(
+            LinkedHashMap<String, Map<String, Object>> mergedItems,
+            String keyword,
+            boolean ophimSource
+    ) {
+        List<String> matchQueries = buildRecentFallbackMatchQueries(keyword);
+        if (matchQueries.isEmpty()) {
+            return;
+        }
+
+        for (int page = 1; page <= SEARCH_RECENT_FALLBACK_PAGE_COUNT; page++) {
+            if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                return;
+            }
+
+            Map<String, Object> payload = parseJsonObject(
+                    ophimSource ? getOphimMovies("phim-moi", page) : getMovies("phim-moi", page)
+            );
+            for (Map<String, Object> item : extractSearchItems(payload)) {
+                if (mergedItems.size() >= SEARCH_FALLBACK_ITEM_LIMIT) {
+                    return;
+                }
+                if (matchesRecentFallbackKeyword(item, matchQueries)) {
+                    appendSearchItem(mergedItems, item);
+                }
+            }
+        }
+    }
+
+    private List<String> buildRecentFallbackMatchQueries(String keyword) {
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        for (String variant : buildSearchKeywordVariants(keyword)) {
+            addRecentFallbackMatchQuery(queries, variant);
+            addRecentFallbackMatchQuery(queries, stripTmdbBracketText(variant));
+            addRecentFallbackMatchQuery(queries, removeTmdbTitleNoise(variant));
+        }
+        return new ArrayList<>(queries);
+    }
+
+    private void addRecentFallbackMatchQuery(LinkedHashSet<String> queries, String value) {
+        String query = normalizeMatchText(value);
+        if (query.length() >= 2) {
+            queries.add(query);
+        }
+    }
+
+    private boolean matchesRecentFallbackKeyword(Map<String, Object> item, List<String> matchQueries) {
+        String movieText = buildRecentFallbackMovieText(item);
+        if (movieText.isBlank()) {
+            return false;
+        }
+
+        for (String query : matchQueries) {
+            if (query.isBlank()) {
+                continue;
+            }
+            if (isDirectRecentFallbackMatch(movieText, query) || hasAllSearchTokens(movieText, query)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String buildRecentFallbackMovieText(Map<String, Object> item) {
+        LinkedHashSet<String> values = new LinkedHashSet<>();
+        for (String key : List.of(
+                "slug",
+                "name",
+                "title",
+                "origin_name",
+                "original_name",
+                "eng_name",
+                "other_name"
+        )) {
+            String value = normalizeMatchText(String.valueOf(item.getOrDefault(key, "")));
+            if (!value.isBlank()) {
+                values.add(value);
+            }
+        }
+        return String.join(" ", values);
+    }
+
+    private boolean isDirectRecentFallbackMatch(String movieText, String query) {
+        if (movieText.equals(query)) {
+            return true;
+        }
+        if (query.length() < 3) {
+            return false;
+        }
+        return containsSearchPhrase(movieText, query);
+    }
+
+    private boolean containsSearchPhrase(String movieText, String query) {
+        String paddedText = " " + movieText + " ";
+        String paddedQuery = " " + query + " ";
+        return paddedText.contains(paddedQuery);
+    }
+
+    private boolean hasAllSearchTokens(String movieText, String query) {
+        List<String> tokens = new ArrayList<>();
+        for (String token : query.split("\\s+")) {
+            if (token.length() >= 2 || token.matches("\\d+")) {
+                tokens.add(token);
+            }
+        }
+        if (tokens.isEmpty()) {
+            return false;
+        }
+        if (tokens.size() == 1 && tokens.get(0).length() < 3 && !tokens.get(0).matches("\\d+")) {
+            return false;
+        }
+
+        String paddedText = " " + movieText + " ";
+        for (String token : tokens) {
+            if (!paddedText.contains(" " + token + " ")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<String> buildDetailSlugCandidates(String keyword) {
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        for (String variant : buildSearchKeywordVariants(keyword)) {
+            String slug = normalizeMatchText(variant).replaceAll("\\s+", "-");
+            if (slug.length() >= 2) {
+                candidates.add(slug);
+            }
+        }
+        return new ArrayList<>(candidates);
+    }
+
+    private Map<String, Object> extractDetailMovie(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Object movie = payload.get("movie");
+        if (movie instanceof Map<?, ?> movieMap && !movieMap.isEmpty()) {
+            return safeMap(movieMap);
+        }
+
+        Object data = payload.get("data");
+        if (data instanceof Map<?, ?> dataMapRaw) {
+            Object dataMovie = dataMapRaw.get("movie");
+            if (dataMovie instanceof Map<?, ?> movieMap && !movieMap.isEmpty()) {
+                return safeMap(movieMap);
+            }
+        }
+
+        return Collections.emptyMap();
+    }
+
+    private String buildSearchResponse(
+            Map<String, Object> primaryPayload,
+            LinkedHashMap<String, Map<String, Object>> mergedItems,
+            String keyword,
+            boolean ophimSource
+    ) {
+        List<Map<String, Object>> items = new ArrayList<>(mergedItems.values());
+        Map<String, Object> response = new LinkedHashMap<>(primaryPayload == null ? Collections.emptyMap() : primaryPayload);
+        response.putIfAbsent("status", "success");
+        response.putIfAbsent("message", "");
+        response.put("items", items);
+        response.put("count", items.size());
+        response.put("source", ophimSource ? "ophim" : "kk");
+
+        Map<String, Object> data = response.get("data") instanceof Map<?, ?> rawData
+                ? new LinkedHashMap<>(safeMap(rawData))
+                : new LinkedHashMap<>();
+        data.put("items", items);
+        data.putIfAbsent("titlePage", keyword);
+
+        Map<String, Object> params = data.get("params") instanceof Map<?, ?> rawParams
+                ? new LinkedHashMap<>(safeMap(rawParams))
+                : new LinkedHashMap<>();
+        Map<String, Object> pagination = params.get("pagination") instanceof Map<?, ?> rawPagination
+                ? new LinkedHashMap<>(safeMap(rawPagination))
+                : new LinkedHashMap<>();
+        int upstreamTotalItems = Math.max(
+                parsePositiveInt(pagination.get("totalItems")),
+                parsePositiveInt(pagination.get("total_items"))
         );
+        int totalItems = Math.max(upstreamTotalItems, items.size());
+        pagination.put("currentPage", 1);
+        pagination.put("totalItems", totalItems);
+        pagination.put("totalItemsPerPage", Math.max(items.size(), DEFAULT_LIST_LIMIT));
+        pagination.put("totalPages", Math.max(1, (int) Math.ceil((double) totalItems / Math.max(DEFAULT_LIST_LIMIT, 1))));
+        params.put("pagination", pagination);
+        data.put("params", params);
+        response.put("data", data);
+
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (Exception ex) {
+            return "{\"status\":\"success\",\"items\":[]}";
+        }
     }
 
     public String getMovieDetail(String slug) {
@@ -204,8 +592,16 @@ public class MovieApiService {
         }
     }
 
+    public Map<String, Object> searchMoviesDataQuick(String keyword, int page) {
+        return parseJsonObject(fetchSearchPage(keyword, page, false));
+    }
+
     public Map<String, Object> searchOphimMoviesData(String keyword, int page) {
         return parseJsonObject(searchOphimMovies(keyword, page));
+    }
+
+    public Map<String, Object> searchOphimMoviesDataQuick(String keyword, int page) {
+        return parseJsonObject(fetchSearchPage(keyword, page, true));
     }
 
     public Map<String, Object> getMoviesByCountryData(String countrySlug, int page) {
@@ -315,6 +711,33 @@ public class MovieApiService {
             if (!result.isEmpty() && hasMoviePayload(result)) {
                 result.put("source", "ophim");
                 movieDetailCache.put(slug, new CacheEntry<>(result, System.currentTimeMillis() + MOVIE_DETAIL_TTL_MILLIS));
+                return result;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return cached != null ? cached.value() : Collections.emptyMap();
+    }
+
+    public Map<String, Object> getMovieDetailData(String slug, String source) {
+        String normalizedSource = normalizeDetailSource(source);
+        if (normalizedSource.isBlank()) {
+            return getMovieDetailData(slug);
+        }
+
+        String cacheKey = normalizedSource + "|" + String.valueOf(slug == null ? "" : slug).trim();
+        CacheEntry<Map<String, Object>> cached = movieDetailCache.get(cacheKey);
+        if (isFresh(cached)) {
+            return cached.value();
+        }
+
+        try {
+            Map<String, Object> result = parseJsonObject(
+                    "ophim".equals(normalizedSource) ? getOphimMovieDetail(slug) : getMovieDetail(slug)
+            );
+            if (!result.isEmpty() && hasMoviePayload(result)) {
+                result.put("source", "ophim".equals(normalizedSource) ? "ophim" : "kkphim");
+                movieDetailCache.put(cacheKey, new CacheEntry<>(result, System.currentTimeMillis() + MOVIE_DETAIL_TTL_MILLIS));
                 return result;
             }
         } catch (Exception ignored) {
@@ -1230,6 +1653,17 @@ public class MovieApiService {
                 .trim();
     }
 
+    private String normalizeDetailSource(String source) {
+        String normalized = normalizeQueryText(source).toLowerCase();
+        if ("ophim".equals(normalized)) {
+            return "ophim";
+        }
+        if ("kk".equals(normalized) || "kkphim".equals(normalized) || "phimapi".equals(normalized)) {
+            return "kk";
+        }
+        return "";
+    }
+
     private String normalizeYear(String value) {
         String year = extractYear(String.valueOf(value == null ? "" : value));
         return year.isBlank() ? "" : year;
@@ -1340,6 +1774,13 @@ public class MovieApiService {
                 if (response.statusCode() < 400 && body != null && !body.isBlank() && looksLikeJson(body)) {
                     cache.put(url, new CacheEntry<>(body, System.currentTimeMillis() + ttlMillis));
                     return body;
+                }
+                if (response.statusCode() >= 400 && response.statusCode() < 500) {
+                    if (body != null && !body.isBlank() && looksLikeJson(body)) {
+                        cache.put(url, new CacheEntry<>(body, System.currentTimeMillis() + Math.min(ttlMillis, TEXT_RESPONSE_TTL_MILLIS)));
+                        return body;
+                    }
+                    break;
                 }
             } catch (Exception ignored) {
             }

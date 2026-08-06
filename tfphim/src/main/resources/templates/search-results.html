@@ -65,6 +65,7 @@
                th:href="${movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug']}">
                 <article class="movie-card"
                          th:attr="data-slug=${movie['slug']},
+                                  data-source=${movie['source']},
                                   data-name=${movie['name']},
                                   data-original-name=${movie['original_name'] != null ? movie['original_name'] : movie['origin_name']},
                                   data-thumb=${movie['thumb_url']},

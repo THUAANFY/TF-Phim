@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${pageTitle} + ' - TF-Phim'">Me Cung Phim Nhat - TF-Phim</title>
+    <title th:text="${pageTitle} + ' - TF-Phim'">Quan ly Hero Banner - TF-Phim</title>
     <link rel="preconnect" href="https://img.phimapi.com">
     <link rel="preconnect" href="https://img.ophim.live">
+    <link rel="preconnect" href="https://image.tmdb.org">
     <link rel="stylesheet" th:href="@{/css/base.css}">
     <link rel="stylesheet" th:href="@{/css/feedback.css}">
     <link rel="stylesheet" th:href="@{/css/components.css}">
     <link rel="stylesheet" th:href="@{/css/layout.css}">
     <link rel="stylesheet" th:href="@{/css/responsive.css}">
-    <link rel="stylesheet" th:href="@{/css/admin-movies.css}">
+    <link rel="stylesheet" th:href="@{/css/admin-hero-banner.css}">
     <link rel="stylesheet" th:href="@{/css/site-fixes.css}">
     <link rel="icon" type="image/png" href="/uploads/Images/tp-logo.png">
 </head>
-<body class="admin-movies-body">
+<body class="admin-hero-body">
 
 <section class="admin-desktop-guard" role="status" aria-live="polite">
     <article class="admin-desktop-guard__card">
@@ -28,86 +29,86 @@
     </article>
 </section>
 
-<main class="admin-movies-page" data-admin-movies-page>
-    <th:block th:replace="~{layouts/admin-sidebar :: adminSidebar('movies')}"></th:block>
+<main class="admin-hero-page" data-admin-hero-page>
+    <th:block th:replace="~{layouts/admin-sidebar :: adminSidebar('hero')}"></th:block>
 
     <section class="admin-main">
         <header class="admin-mainbar">
             <div class="admin-mainbar-title">
-                <strong>M&#234; Cung Phim Nh&#7853;t</strong>
-                <p>Qu&#7843;n l&#253; danh s&#225;ch phim hi&#7875;n th&#7883; trong section Nh&#7853;t B&#7843;n</p>
+                <strong>Hero Banner</strong>
+                <p>Ch&#7885;n t&#7889;i &#273;a 6 phim t&#7915; API v&#224; d&#225;n asset TMDB cho banner trang ch&#7911;</p>
             </div>
 
             <div class="admin-main-actions">
-                <div class="admin-movies-status" data-admin-save-state>
+                <div class="admin-save-status" data-admin-hero-save-state>
                     <i data-lucide="circle-check" aria-hidden="true"></i>
                     <span>S&#7861;n s&#224;ng</span>
                 </div>
-                <a class="admin-preview-link" href="/#section-phim-nhat-ban">
+                <a class="admin-preview-link" href="/#heroSlider">
                     <i data-lucide="eye" aria-hidden="true"></i>
-                    <span>Xem section</span>
+                    <span>Xem hero</span>
                 </a>
-                <button class="admin-ghost-btn" type="button" data-admin-save-order>
+                <button class="admin-ghost-btn" type="button" data-admin-hero-save>
                     <i data-lucide="save" aria-hidden="true"></i>
                     <span>L&#432;u</span>
                 </button>
             </div>
         </header>
 
-        <section class="admin-movies-layout">
-            <section class="admin-workspace admin-workspace--search" id="admin-search-panel">
-                <div class="admin-workspace-head">
-                    <div class="admin-workspace-title">
+        <section class="admin-hero-layout">
+            <section class="admin-panel admin-panel--search" id="admin-hero-search-panel">
+                <div class="admin-panel-head">
+                    <div class="admin-panel-title">
                         <span>1.</span>
-                        <h2>T&#236;m ki&#7871;m phim t&#7915; API</h2>
+                        <h2>T&#236;m phim t&#7915; API</h2>
                     </div>
                 </div>
 
-                <form class="admin-search-form" data-admin-search-form>
-                    <label class="admin-search-field" for="adminMovieSearch">
+                <form class="admin-search-form" data-admin-hero-search-form>
+                    <label class="admin-search-field" for="adminHeroMovieSearch">
                         <i data-lucide="search" aria-hidden="true"></i>
-                        <input id="adminMovieSearch"
+                        <input id="adminHeroMovieSearch"
                                type="search"
                                name="keyword"
                                placeholder="T&#234;n phim, di&#7877;n vi&#234;n..."
                                autocomplete="off">
                     </label>
-                    <div class="admin-source-select" data-admin-source-widget>
+                    <div class="admin-source-select" data-admin-hero-source-widget>
                         <button class="admin-source-select__button"
                                 type="button"
-                                data-admin-source-trigger
+                                data-admin-hero-source-trigger
                                 aria-haspopup="listbox"
                                 aria-expanded="false"
-                                aria-controls="adminMovieSourceList">
+                                aria-controls="adminHeroMovieSourceList">
                             <i data-lucide="database" aria-hidden="true"></i>
-                            <span data-admin-source-label>T&#7845;t c&#7843; ngu&#7891;n</span>
+                            <span data-admin-hero-source-label>T&#7845;t c&#7843; ngu&#7891;n</span>
                             <i data-lucide="chevron-down" aria-hidden="true"></i>
                         </button>
-                        <input id="adminMovieSource" type="hidden" name="source" value="all" data-admin-source>
+                        <input id="adminHeroMovieSource" type="hidden" name="source" value="all" data-admin-hero-source>
                         <div class="admin-source-select__menu"
-                             id="adminMovieSourceList"
+                             id="adminHeroMovieSourceList"
                              role="listbox"
                              aria-label="Nguon phim"
-                             data-admin-source-menu>
+                             data-admin-hero-source-menu>
                             <button class="admin-source-select__option is-selected"
                                     type="button"
                                     role="option"
                                     aria-selected="true"
-                                    data-admin-source-option="all">
+                                    data-admin-hero-source-option="all">
                                 T&#7845;t c&#7843; ngu&#7891;n
                             </button>
                             <button class="admin-source-select__option"
                                     type="button"
                                     role="option"
                                     aria-selected="false"
-                                    data-admin-source-option="kk">
+                                    data-admin-hero-source-option="kk">
                                 KK
                             </button>
                             <button class="admin-source-select__option"
                                     type="button"
                                     role="option"
                                     aria-selected="false"
-                                    data-admin-source-option="ophim">
+                                    data-admin-hero-source-option="ophim">
                                 OPhim
                             </button>
                         </div>
@@ -120,10 +121,10 @@
 
                 <div class="admin-results-bar">
                     <strong>K&#7871;t qu&#7843; t&#236;m ki&#7871;m</strong>
-                    <span data-admin-result-count>Ch&#432;a c&#243; k&#7871;t qu&#7843;</span>
+                    <span data-admin-hero-result-count>Ch&#432;a c&#243; k&#7871;t qu&#7843;</span>
                 </div>
 
-                <div class="admin-results-grid" data-admin-results>
+                <div class="admin-results-grid" data-admin-hero-results>
                     <div class="admin-empty-state">
                         <i data-lucide="film" aria-hidden="true"></i>
                         <span>T&#236;m phim t&#7915; API</span>
@@ -131,61 +132,22 @@
                 </div>
             </section>
 
-            <section class="admin-workspace admin-workspace--selected" id="admin-selected-panel">
-                <div class="admin-workspace-head">
-                    <div class="admin-workspace-title">
+            <section class="admin-panel admin-panel--editor" id="admin-hero-editor-panel">
+                <div class="admin-panel-head">
+                    <div class="admin-panel-title">
                         <span>2.</span>
-                        <h2>Phim &#273;&#227; ch&#7885;n</h2>
+                        <h2>Thi&#7871;t l&#7853;p Hero Banner</h2>
                     </div>
-                    <div class="admin-count-pill">
-                        <strong data-admin-selected-count>0</strong>
-                        <span>phim</span>
-                    </div>
-                </div>
-
-                <section class="admin-overview" aria-label="Thong ke quan ly phim">
-                    <div class="admin-stat-card">
-                        <i data-lucide="layers-3" aria-hidden="true"></i>
-                        <span>
-                            <small>T&#7893;ng s&#7889; phim</small>
-                            <strong data-admin-selected-count>0</strong>
-                        </span>
-                    </div>
-                    <div class="admin-stat-card admin-stat-card--enabled">
-                        <i data-lucide="eye" aria-hidden="true"></i>
-                        <span>
-                            <small>&#272;ang c&#244;ng chi&#7871;u</small>
-                            <strong data-admin-enabled-count>0</strong>
-                        </span>
-                    </div>
-                    <div class="admin-stat-card admin-stat-card--muted">
-                        <i data-lucide="eye-off" aria-hidden="true"></i>
-                        <span>
-                            <small>&#272;ang &#7849;n</small>
-                            <strong data-admin-disabled-count>0</strong>
-                        </span>
-                    </div>
-                </section>
-
-                <div class="admin-selected-toolbar">
-                    <div class="admin-toolbar-stats">
-                        <span>
-                            <i data-lucide="eye" aria-hidden="true"></i>
-                            <strong data-admin-enabled-count>0</strong>
-                            &#273;ang b&#7853;t
-                        </span>
-                        <span>
-                            <i data-lucide="eye-off" aria-hidden="true"></i>
-                            <strong data-admin-disabled-count>0</strong>
-                            &#273;ang &#7849;n
-                        </span>
+                    <div class="admin-hero-pill">
+                        <i data-lucide="image" aria-hidden="true"></i>
+                        <span data-admin-hero-count>0/6</span>
                     </div>
                 </div>
 
-                <div class="admin-selected-list" data-admin-selected-list>
+                <div class="admin-hero-editor" data-admin-hero-editor>
                     <div class="admin-empty-state">
-                        <i data-lucide="plus" aria-hidden="true"></i>
-                        <span>Ch&#432;a ch&#7885;n phim</span>
+                        <i data-lucide="image-plus" aria-hidden="true"></i>
+                        <span>Ch&#432;a ch&#7885;n hero banner</span>
                     </div>
                 </div>
             </section>
@@ -195,7 +157,7 @@
 
 <script th:src="@{/js/main.js}"></script>
 <script th:src="@{/js/lucide.min.js}"></script>
-<script th:src="@{/js/admin-movies.js}"></script>
+<script th:src="@{/js/admin-hero-banner.js}"></script>
 <script th:src="@{/js/admin-shell.js}"></script>
 </body>
 </html>

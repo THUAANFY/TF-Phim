@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<body>
+<aside class="admin-sidebar" th:fragment="adminSidebar(activePage)">
+    <a class="admin-brand" href="/admin" aria-label="TF-Phim Admin">
+        <img class="admin-brand-logo"
+             src="/uploads/Images/logo_TF-Phim_pre.png"
+             alt="TF-Phim">
+    </a>
+
+    <nav class="admin-nav" aria-label="Admin">
+        <section class="admin-nav-group" aria-label="Admin">
+            <span class="admin-nav-heading">Admin</span>
+            <a href="/admin"
+               th:classappend="${activePage == 'dashboard' ? ' is-active' : ''}"
+               th:attr="aria-current=${activePage == 'dashboard' ? 'page' : null}">
+                <i data-lucide="layout-dashboard" aria-hidden="true"></i>
+                <span>Dashboard</span>
+            </a>
+            <a href="/me-cung-phim-nhat"
+               th:classappend="${activePage == 'movies' ? ' is-active' : ''}"
+               th:attr="aria-current=${activePage == 'movies' ? 'page' : null}">
+                <i data-lucide="clapperboard" aria-hidden="true"></i>
+                <span>M&#234; Cung Phim Nh&#7853;t</span>
+            </a>
+            <a href="/quan-ly-hero-banner"
+               th:classappend="${activePage == 'hero' ? ' is-active' : ''}"
+               th:attr="aria-current=${activePage == 'hero' ? 'page' : null}">
+                <i data-lucide="image" aria-hidden="true"></i>
+                <span>Hero Banner</span>
+            </a>
+        </section>
+    </nav>
+
+    <section class="admin-profile-card" aria-label="Quan tri vien">
+        <span class="admin-profile-avatar">A</span>
+        <span>
+            <strong>Admin</strong>
+            <small>Qu&#7843;n tr&#7883; vi&#234;n</small>
+        </span>
+        <span class="admin-profile-status" aria-label="Dang hoat dong"></span>
+    </section>
+</aside>
+</body>
+</html>

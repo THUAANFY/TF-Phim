@@ -28,10 +28,13 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.text.NumberFormat;
 
@@ -42,7 +45,15 @@ public class HomeController {
     private static final Logger log = LoggerFactory.getLogger(HomeController.class);
     private static final int EPISODES_PER_PAGE = 100;
     private static final int MAX_LISTING_MOVIES_PER_PAGE = 24;
-    private static final int WEEKLY_TOP_SOURCE_PAGES = 5;
+    private static final int WEEKLY_TOP_SOURCE_PAGES = 1;
+    private static final long SOURCE_CONTEXT_TTL_MILLIS = 10 * 60 * 1000;
+    private static final long SOURCE_CONTEXT_MISS_TTL_MILLIS = 30 * 1000;
+    private static final int ALTERNATE_SOURCE_RECENT_PAGES = 6;
+    private static final long WEEKLY_TOP_TTL_MILLIS = 5 * 60 * 1000;
+    private static final boolean ENABLE_SYNC_TMDB_ACTOR_IMAGES = true;
+    private static final boolean ENABLE_SYNC_TMDB_GALLERY_IMAGES = true;
+    private static final String SOURCE_KK = "kk";
+    private static final String SOURCE_OPHIM = "ophim";
     private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final List<DateTimeFormatter> MOVIE_DATE_TIME_FORMATTERS = List.of(
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,
@@ -79,6 +90,9 @@ public class HomeController {
             )
     );
     private final MovieApiService movieApiService;
+    private final Map<String, TimedCacheEntry<MovieSourceContext>> movieSourceContextCache = new ConcurrentHashMap<>();
+    private final Map<String, TimedCacheEntry<List<Map<String, Object>>>> weeklyTopCache = new ConcurrentHashMap<>();
+
     public HomeController(MovieApiService movieApiService) {
         this.movieApiService = movieApiService;
     }
@@ -171,8 +185,15 @@ public class HomeController {
         }
 
         int safePage = Math.max(page, 1);
+        CompletableFuture<Map<String, Object>> primarySearchFuture = loadMovieApiPayloadAsync(
+                () -> movieApiService.searchMoviesData(normalizedKeyword, safePage)
+        );
+        CompletableFuture<Map<String, Object>> supplementalSearchFuture = safePage == 1
+                ? loadMovieApiPayloadAsync(() -> movieApiService.searchOphimMoviesData(normalizedKeyword, safePage))
+                : null;
+
         Map<String, Object> pagePayload = ensureMetadataPayload(
-                movieApiService.searchMoviesData(normalizedKeyword, safePage),
+                awaitMovieApiPayload(primarySearchFuture),
                 () -> movieApiService.searchMoviesData(normalizedKeyword, safePage)
         );
         int totalItems = resolveTotalItems(pagePayload);
@@ -184,14 +205,20 @@ public class HomeController {
                     () -> movieApiService.searchMoviesData(normalizedKeyword, currentPage)
             );
         }
+        List<Map<String, Object>> primaryMovies = extractMovieItems(pagePayload);
+        List<Map<String, Object>> supplementalMovies = Collections.emptyList();
+        if (currentPage == 1) {
+            Map<String, Object> supplementalPayload = supplementalSearchFuture != null && currentPage == safePage
+                    ? awaitMovieApiPayload(supplementalSearchFuture)
+                    : movieApiService.searchOphimMoviesData(normalizedKeyword, currentPage);
+            supplementalMovies = extractMovieItems(supplementalPayload, "", "ophim");
+        }
         List<Map<String, Object>> movies = mergeSupplementalMovies(
-                extractMovieItems(pagePayload),
-                currentPage == 1
-                        ? extractMovieItems(movieApiService.searchOphimMoviesData(normalizedKeyword, currentPage), "", "ophim")
-                        : Collections.emptyList()
+                primaryMovies,
+                supplementalMovies
         );
         movies = sortSearchResults(movies);
-        totalItems += Math.max(0, movies.size() - extractMovieItems(pagePayload).size());
+        totalItems += Math.max(0, movies.size() - primaryMovies.size());
 
         model.addAttribute("movies", movies);
         model.addAttribute("totalItems", totalItems);
@@ -300,15 +327,17 @@ public class HomeController {
     }
 
     @GetMapping("/phim/{slug}")
-    public String movieDetail(@PathVariable String slug, Model model) {
+    public String movieDetail(
+            @PathVariable String slug,
+            @RequestParam(required = false) String source,
+            Model model
+    ) {
         try {
-            Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
-            Map<String, Object> movie = extractMovieDetail(payload);
-            List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
-            int totalEpisodes = extractNonNegativeInt(movie.get("total_episodes"), 0);
-            int airedEpisodes = resolveAiredEpisodes(movie, episodes);
-            boolean showServerCards = !episodes.isEmpty()
-                    && episodes.stream().allMatch(server -> safeList(server.get("items")).size() <= 1);
+            CompletableFuture<List<Map<String, Object>>> weeklyTopFuture = loadWeeklyTopMoviePoolAsync();
+            MovieSourceContext sourceContext = loadMovieSourceContext(slug, source);
+            MovieSourceData activeSource = sourceContext.active();
+            Map<String, Object> movie = activeSource.movie();
+            List<Map<String, Object>> episodes = activeSource.episodes();
 
             if (movie.isEmpty()) {
                 model.addAttribute("pageTitle", "Không tìm thấy phim");
@@ -317,6 +346,10 @@ public class HomeController {
             }
 
             model.addAttribute("pageTitle", movie.getOrDefault("name", "Chi tiết phim"));
+            String activeSlug = activeSource.slug();
+            boolean showServerCards = !episodes.isEmpty()
+                    && episodes.stream().allMatch(server -> safeList(server.get("items")).size() <= 1);
+
             model.addAttribute("movie", movie);
             model.addAttribute("movieDescription", resolveMovieDescription(movie));
             model.addAttribute("categories", extractCategories(movie));
@@ -327,13 +360,15 @@ public class HomeController {
             model.addAttribute("movieDuration", resolveMovieField(movie, "time", "runtime", "duration"));
             model.addAttribute("movieCountry", resolveMovieField(movie, "country", "countries"));
             model.addAttribute("movieDirector", resolveMovieField(movie, "director", "directors"));
-            model.addAttribute("weeklyTopMovies", buildWeeklyTopMovies(String.valueOf(movie.getOrDefault("slug", slug))));
+            model.addAttribute("weeklyTopMovies", buildWeeklyTopMovies(activeSlug, awaitWeeklyTopMoviePool(weeklyTopFuture)));
             model.addAttribute("isTrailerMovie", isTrailerMovie(movie));
             model.addAttribute("episodes", episodes);
             model.addAttribute("showServerCards", showServerCards);
+            model.addAttribute("activeSource", activeSource.source());
+            model.addAttribute("sourceOptions", buildMovieSourceOptions(sourceContext, Collections.emptyMap(), false));
             model.addAttribute("detailServerCards", buildDetailServerCards(
                     episodes,
-                    String.valueOf(movie.getOrDefault("slug", slug)),
+                    activeSlug,
                     String.valueOf(movie.getOrDefault("name", ""))
             ));
             model.addAttribute("pagedEpisodes", paginateEpisodesForView(
@@ -345,7 +380,7 @@ public class HomeController {
             applyEpisodeProgressAttributes(model, movie, episodes);
             Map<String, Object> firstEpisode = findFirstEpisode(episodes);
             model.addAttribute("firstEpisode", firstEpisode);
-            model.addAttribute("firstEpisodeStreamUrl", buildStreamUrl(String.valueOf(movie.getOrDefault("slug", slug)), firstEpisode));
+            model.addAttribute("firstEpisodeStreamUrl", buildStreamUrl(activeSlug, firstEpisode, activeSource.source()));
             return "movie-detail";
         } catch (Exception ex) {
             log.error("Cannot load movie detail for slug={}", slug, ex);
@@ -358,17 +393,17 @@ public class HomeController {
     @GetMapping("/xem/{slug}")
     public String watchMovie(
             @PathVariable String slug,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) String server,
             @RequestParam(required = false) String tap,
             Model model
     ) {
         try {
-            Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
-            Map<String, Object> movie = extractMovieDetail(payload);
-            List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
+            MovieSourceContext sourceContext = loadMovieSourceContext(slug, source);
+            MovieSourceData activeSource = sourceContext.active();
+            Map<String, Object> movie = activeSource.movie();
+            List<Map<String, Object>> episodes = activeSource.episodes();
             Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
-            boolean showServerCards = !episodes.isEmpty()
-                    && episodes.stream().allMatch(serverItem -> safeList(serverItem.get("items")).size() <= 1);
 
             if (movie.isEmpty()) {
                 model.addAttribute("pageTitle", "Không xem được phim");
@@ -376,10 +411,16 @@ public class HomeController {
                 return "movie-watch";
             }
 
+            String activeSlug = activeSource.slug();
+            boolean showServerCards = !episodes.isEmpty()
+                    && episodes.stream().allMatch(serverItem -> safeList(serverItem.get("items")).size() <= 1);
+
             if (selectedEpisode.isEmpty()) {
                 model.addAttribute("pageTitle", movie.getOrDefault("name", "Xem phim"));
                 model.addAttribute("movie", movie);
                 model.addAttribute("movieDescription", resolveMovieDescription(movie));
+                model.addAttribute("activeSource", activeSource.source());
+                model.addAttribute("sourceOptions", buildMovieSourceOptions(sourceContext, Collections.emptyMap(), true));
                 model.addAttribute("errorMessage", "Phim này hiện chưa có nguồn phát khả dụng.");
                 return "movie-watch";
             }
@@ -389,9 +430,11 @@ public class HomeController {
             model.addAttribute("movieDescription", resolveMovieDescription(movie));
             model.addAttribute("episodes", episodes);
             model.addAttribute("showServerCards", showServerCards);
+            model.addAttribute("activeSource", activeSource.source());
+            model.addAttribute("sourceOptions", buildMovieSourceOptions(sourceContext, selectedEpisode, true));
             model.addAttribute("detailServerCards", buildDetailServerCards(
                     episodes,
-                    String.valueOf(movie.getOrDefault("slug", slug)),
+                    activeSlug,
                     String.valueOf(movie.getOrDefault("name", ""))
             ));
             model.addAttribute("pagedEpisodes", paginateEpisodesForView(
@@ -411,7 +454,7 @@ public class HomeController {
                     String.valueOf(movie.getOrDefault("language", ""))
             ));
             model.addAttribute("selectedTap", String.valueOf(selectedEpisode.getOrDefault("slug", "")));
-            model.addAttribute("selectedStreamUrl", buildStreamUrl(String.valueOf(movie.getOrDefault("slug", slug)), selectedEpisode));
+            model.addAttribute("selectedStreamUrl", buildStreamUrl(activeSlug, selectedEpisode, activeSource.source()));
             applyEpisodeProgressAttributes(model, movie, episodes);
             return "movie-watch";
         } catch (Exception ex) {
@@ -425,22 +468,22 @@ public class HomeController {
     public String watchMovieByEpisode(
             @PathVariable String slug,
             @PathVariable String tap,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) String server,
             Model model
     ) {
-        return watchMovie(slug, server, tap, model);
+        return watchMovie(slug, source, server, tap, model);
     }
 
     @GetMapping("/stream/{slug}/{tap}")
     public RedirectView streamMovie(
             @PathVariable String slug,
             @PathVariable String tap,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) String server
     ) {
-        Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
-        Map<String, Object> movie = extractMovieDetail(payload);
-        List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
-        Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
+        MovieSourceData activeSource = loadMovieSourceData(slug, source);
+        Map<String, Object> selectedEpisode = findSelectedEpisode(activeSource.episodes(), server, tap);
         String m3u8 = String.valueOf(selectedEpisode.getOrDefault("m3u8", ""));
 
         if (!m3u8.isBlank()) {
@@ -452,17 +495,18 @@ public class HomeController {
             return new RedirectView(embed);
         }
 
-        return new RedirectView("/xem/" + slug);
+        return new RedirectView(buildWatchBaseUrl(activeSource.slug().isBlank() ? slug : activeSource.slug(), activeSource.source()));
     }
 
     @GetMapping(value = "/proxy/hls/{slug}/{tap}.m3u8", produces = "application/vnd.apple.mpegurl")
     public ResponseEntity<String> proxyPlaylist(
             @PathVariable String slug,
             @PathVariable String tap,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) String server
     ) {
         try {
-            String playlistUrl = findEpisodeStreamSource(slug, server, tap);
+            String playlistUrl = findEpisodeStreamSource(slug, source, server, tap);
             if (playlistUrl.isBlank()) {
                 return ResponseEntity.notFound().build();
             }
@@ -538,6 +582,352 @@ public class HomeController {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> safeList(Object value) {
         return value instanceof List<?> list ? (List<Map<String, Object>>) list : Collections.emptyList();
+    }
+
+    private MovieSourceContext loadMovieSourceContext(String slug, String requestedSource) {
+        String normalizedSlug = String.valueOf(slug == null ? "" : slug).trim();
+        String normalizedSource = normalizeSourceKey(requestedSource);
+        String cacheKey = normalizedSource + "|" + normalizedSlug;
+        TimedCacheEntry<MovieSourceContext> cached = movieSourceContextCache.get(cacheKey);
+        if (isTimedCacheFresh(cached)) {
+            return cached.value();
+        }
+
+        MovieSourceData activeSource = loadMovieSourceData(slug, requestedSource);
+        if (activeSource.movie().isEmpty() && !normalizeSourceKey(requestedSource).isBlank()) {
+            activeSource = loadMovieSourceData(slug, "");
+        }
+
+        if (activeSource.movie().isEmpty()) {
+            MovieSourceContext emptyContext = new MovieSourceContext(activeSource, Collections.emptyList());
+            cacheMovieSourceContext(cacheKey, emptyContext);
+            return emptyContext;
+        }
+
+        List<MovieSourceData> availableSources = new ArrayList<>();
+        availableSources.add(activeSource);
+
+        MovieSourceData alternateSource = findAlternateMovieSource(activeSource, slug);
+        if (!alternateSource.movie().isEmpty()) {
+            availableSources.add(alternateSource);
+        }
+
+        MovieSourceContext context = new MovieSourceContext(activeSource, availableSources);
+        cacheMovieSourceContext(cacheKey, context);
+        return context;
+    }
+
+    private void cacheMovieSourceContext(String cacheKey, MovieSourceContext context) {
+        long ttlMillis = context.availableSources().size() > 1
+                ? SOURCE_CONTEXT_TTL_MILLIS
+                : SOURCE_CONTEXT_MISS_TTL_MILLIS;
+        movieSourceContextCache.put(cacheKey, new TimedCacheEntry<>(context, System.currentTimeMillis() + ttlMillis));
+    }
+
+    private MovieSourceData loadMovieSourceData(String slug, String source) {
+        String requestedSource = normalizeSourceKey(source);
+        Map<String, Object> payload = requestedSource.isBlank()
+                ? movieApiService.getMovieDetailData(slug)
+                : movieApiService.getMovieDetailData(slug, requestedSource);
+        Map<String, Object> movie = extractMovieDetail(payload);
+        if (movie.isEmpty()) {
+            return emptyMovieSourceData(requestedSource);
+        }
+
+        String resolvedSource = normalizeSourceKey(payload.get("source"));
+        if (resolvedSource.isBlank()) {
+            resolvedSource = normalizeSourceKey(movie.get("source"));
+        }
+        if (resolvedSource.isBlank()) {
+            resolvedSource = requestedSource.isBlank() ? SOURCE_KK : requestedSource;
+        }
+
+        String resolvedSlug = resolveFirstMovieText(movie, "slug");
+        if (resolvedSlug.isBlank()) {
+            resolvedSlug = String.valueOf(slug == null ? "" : slug).trim();
+        }
+
+        Map<String, Object> sourcedMovie = new HashMap<>(movie);
+        sourcedMovie.put("slug", resolvedSlug);
+        sourcedMovie.put("source", resolvedSource);
+        sourcedMovie.put("source_label", getSourceLabel(resolvedSource));
+        sourcedMovie.put("detail_url", buildDetailUrl(resolvedSlug, resolvedSource));
+        sourcedMovie.put("watch_url", buildWatchBaseUrl(resolvedSlug, resolvedSource));
+
+        List<Map<String, Object>> episodes = tagEpisodeServers(
+                extractEpisodeServers(sourcedMovie, payload),
+                resolvedSource,
+                resolvedSlug
+        );
+
+        return new MovieSourceData(
+                resolvedSource,
+                getSourceLabel(resolvedSource),
+                resolvedSlug,
+                payload,
+                sourcedMovie,
+                episodes
+        );
+    }
+
+    private MovieSourceData emptyMovieSourceData(String source) {
+        String sourceKey = normalizeSourceKey(source);
+        return new MovieSourceData(
+                sourceKey,
+                getSourceLabel(sourceKey),
+                "",
+                Collections.emptyMap(),
+                Collections.emptyMap(),
+                Collections.emptyList()
+        );
+    }
+
+    private MovieSourceData findAlternateMovieSource(MovieSourceData activeSource, String requestedSlug) {
+        String alternateSource = oppositeSource(activeSource.source());
+        if (alternateSource.isBlank()) {
+            return emptyMovieSourceData("");
+        }
+
+        LinkedHashSet<String> slugCandidates = new LinkedHashSet<>();
+        addCandidateText(slugCandidates, activeSource.slug());
+        addCandidateText(slugCandidates, requestedSlug);
+        addCandidateText(slugCandidates, resolveFirstMovieText(activeSource.movie(), "slug"));
+
+        for (String slugCandidate : slugCandidates) {
+            MovieSourceData candidate = loadMovieSourceData(slugCandidate, alternateSource);
+            if (!candidate.movie().isEmpty() && isSameMovie(activeSource.movie(), candidate.movie())) {
+                return candidate;
+            }
+        }
+
+        List<CompletableFuture<List<Map<String, Object>>>> searchFutures = new ArrayList<>();
+        for (String keyword : buildAlternateSourceSearchKeywords(activeSource.movie())) {
+            String searchKeyword = keyword;
+            searchFutures.add(loadMovieItemsAsync(() -> SOURCE_OPHIM.equals(alternateSource)
+                    ? extractMovieItems(movieApiService.searchOphimMoviesDataQuick(searchKeyword, 1), "", SOURCE_OPHIM)
+                    : extractMovieItems(movieApiService.searchMoviesDataQuick(searchKeyword, 1), "", SOURCE_KK)));
+        }
+
+        for (CompletableFuture<List<Map<String, Object>>> searchFuture : searchFutures) {
+            MovieSourceData matchedSource = findAlternateMovieFromItems(
+                    activeSource,
+                    alternateSource,
+                    awaitMovieItems(searchFuture)
+            );
+            if (!matchedSource.movie().isEmpty()) {
+                return matchedSource;
+            }
+        }
+
+        List<CompletableFuture<List<Map<String, Object>>>> recentFutures = new ArrayList<>();
+        for (int page = 1; page <= ALTERNATE_SOURCE_RECENT_PAGES; page++) {
+            int recentPage = page;
+            recentFutures.add(loadMovieItemsAsync(() -> SOURCE_OPHIM.equals(alternateSource)
+                    ? extractMovieItems(movieApiService.getOphimMoviesData("phim-moi", recentPage), "phim-moi", SOURCE_OPHIM)
+                    : extractMovieItems(movieApiService.getMoviesData("phim-moi", recentPage), "phim-moi", SOURCE_KK)));
+        }
+
+        for (CompletableFuture<List<Map<String, Object>>> recentFuture : recentFutures) {
+            MovieSourceData matchedSource = findAlternateMovieFromItems(
+                    activeSource,
+                    alternateSource,
+                    awaitMovieItems(recentFuture)
+            );
+            if (!matchedSource.movie().isEmpty()) {
+                return matchedSource;
+            }
+        }
+
+        return emptyMovieSourceData(alternateSource);
+    }
+
+    private MovieSourceData findAlternateMovieFromItems(
+            MovieSourceData activeSource,
+            String alternateSource,
+            List<Map<String, Object>> candidates
+    ) {
+        for (Map<String, Object> item : candidates) {
+            if (!isSameMovie(activeSource.movie(), item)) {
+                continue;
+            }
+
+            String candidateSlug = resolveFirstMovieText(item, "slug");
+            if (candidateSlug.isBlank()) {
+                continue;
+            }
+
+            MovieSourceData candidate = loadMovieSourceData(candidateSlug, alternateSource);
+            if (!candidate.movie().isEmpty() && isSameMovie(activeSource.movie(), candidate.movie())) {
+                return candidate;
+            }
+        }
+
+        return emptyMovieSourceData(alternateSource);
+    }
+
+    private CompletableFuture<List<Map<String, Object>>> loadMovieItemsAsync(
+            java.util.function.Supplier<List<Map<String, Object>>> supplier
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                List<Map<String, Object>> items = supplier.get();
+                return items != null ? items : Collections.emptyList();
+            } catch (Exception ignored) {
+                return Collections.emptyList();
+            }
+        });
+    }
+
+    private List<Map<String, Object>> awaitMovieItems(
+            CompletableFuture<List<Map<String, Object>>> future
+    ) {
+        if (future == null) {
+            return Collections.emptyList();
+        }
+        try {
+            List<Map<String, Object>> items = future.join();
+            return items != null ? items : Collections.emptyList();
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
+    }
+
+    private boolean isTimedCacheFresh(TimedCacheEntry<?> entry) {
+        return entry != null && entry.expiresAt() > System.currentTimeMillis();
+    }
+
+    private List<String> buildAlternateSourceSearchKeywords(Map<String, Object> movie) {
+        LinkedHashSet<String> keywords = new LinkedHashSet<>();
+        addCandidateText(keywords, resolveFirstMovieText(movie, "name", "title"));
+        addCandidateText(keywords, resolveFirstMovieText(movie, "original_name", "origin_name"));
+        addCandidateText(keywords, normalizeMovieIdentityText(resolveFirstMovieText(movie, "name", "title")));
+        return new ArrayList<>(keywords);
+    }
+
+    private void addCandidateText(LinkedHashSet<String> target, String value) {
+        String text = String.valueOf(value == null ? "" : value).trim();
+        if (text.length() >= 2) {
+            target.add(text);
+        }
+    }
+
+    private List<Map<String, Object>> buildMovieSourceOptions(
+            MovieSourceContext sourceContext,
+            Map<String, Object> selectedEpisode,
+            boolean watchMode
+    ) {
+        if (sourceContext.availableSources().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> options = new ArrayList<>();
+        for (MovieSourceData sourceData : sourceContext.availableSources()) {
+            Map<String, Object> option = new LinkedHashMap<>();
+            boolean active = sourceData.source().equals(sourceContext.active().source());
+            Map<String, Object> targetEpisode = watchMode
+                    ? findComparableEpisode(sourceData.episodes(), selectedEpisode)
+                    : findFirstEpisode(sourceData.episodes());
+
+            option.put("source", sourceData.source());
+            option.put("label", sourceData.label());
+            option.put("slug", sourceData.slug());
+            option.put("active", active);
+            option.put("episode_count", countEpisodes(sourceData.episodes()));
+            option.put("detail_url", buildDetailUrl(sourceData.slug(), sourceData.source()));
+            option.put("watch_url", targetEpisode.isEmpty()
+                    ? buildWatchBaseUrl(sourceData.slug(), sourceData.source())
+                    : buildWatchUrl(sourceData.slug(), targetEpisode, sourceData.source()));
+            options.add(option);
+        }
+
+        return options;
+    }
+
+    private Map<String, Object> findComparableEpisode(
+            List<Map<String, Object>> episodes,
+            Map<String, Object> selectedEpisode
+    ) {
+        if (episodes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        if (selectedEpisode == null || selectedEpisode.isEmpty()) {
+            return findFirstEpisode(episodes);
+        }
+
+        String selectedSlug = normalizeMovieIdentityText(String.valueOf(selectedEpisode.getOrDefault("slug", "")));
+        String selectedName = normalizeEpisodeNameForMatch(String.valueOf(selectedEpisode.getOrDefault("name", "")));
+        for (Map<String, Object> server : episodes) {
+            String serverName = String.valueOf(server.getOrDefault("server_name", ""));
+            for (Map<String, Object> item : safeList(server.get("items"))) {
+                String itemSlug = normalizeMovieIdentityText(String.valueOf(item.getOrDefault("slug", "")));
+                if (!selectedSlug.isBlank() && selectedSlug.equals(itemSlug)) {
+                    Map<String, Object> matched = new HashMap<>(item);
+                    matched.put("server_name", serverName);
+                    return matched;
+                }
+            }
+        }
+
+        if (!selectedName.isBlank()) {
+            for (Map<String, Object> server : episodes) {
+                String serverName = String.valueOf(server.getOrDefault("server_name", ""));
+                for (Map<String, Object> item : safeList(server.get("items"))) {
+                    String itemName = normalizeEpisodeNameForMatch(String.valueOf(item.getOrDefault("name", "")));
+                    if (selectedName.equals(itemName)) {
+                        Map<String, Object> matched = new HashMap<>(item);
+                        matched.put("server_name", serverName);
+                        return matched;
+                    }
+                }
+            }
+        }
+
+        return findFirstEpisode(episodes);
+    }
+
+    private String normalizeEpisodeNameForMatch(String value) {
+        return normalizeMovieIdentityText(value)
+                .replaceFirst("^tap\\s+", "")
+                .replaceFirst("^episode\\s+", "")
+                .trim();
+    }
+
+    private int countEpisodes(List<Map<String, Object>> episodes) {
+        int count = 0;
+        for (Map<String, Object> server : episodes) {
+            count += safeList(server.get("items")).size();
+        }
+        return count;
+    }
+
+    private List<Map<String, Object>> tagEpisodeServers(
+            List<Map<String, Object>> episodes,
+            String source,
+            String slug
+    ) {
+        if (episodes.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> taggedServers = new ArrayList<>();
+        for (Map<String, Object> server : episodes) {
+            Map<String, Object> taggedServer = new HashMap<>(server);
+            taggedServer.put("source", source);
+            taggedServer.put("source_slug", slug);
+
+            List<Map<String, Object>> taggedItems = new ArrayList<>();
+            for (Map<String, Object> item : safeList(server.get("items"))) {
+                Map<String, Object> taggedItem = new HashMap<>(item);
+                taggedItem.put("source", source);
+                taggedItem.put("source_slug", slug);
+                taggedItems.add(taggedItem);
+            }
+            taggedServer.put("items", taggedItems);
+            taggedServers.add(taggedServer);
+        }
+
+        return taggedServers;
     }
 
     private List<Map<String, Object>> extractCategories(Map<String, Object> movie) {
@@ -647,6 +1037,9 @@ public class HomeController {
         if (actors.isEmpty()) {
             return actors;
         }
+        if (!ENABLE_SYNC_TMDB_ACTOR_IMAGES) {
+            return actors;
+        }
 
         List<String> actorNames = new ArrayList<>();
         for (Map<String, Object> actor : actors) {
@@ -713,7 +1106,9 @@ public class HomeController {
         collectGalleryImages(images, seenUrls, movie.get("backdrops"), "movie-api");
         collectGalleryImages(images, seenUrls, movie.get("posters"), "movie-api");
         collectGalleryImages(images, seenUrls, movie.get("gallery"), "movie-api");
-        collectTmdbGalleryImages(images, seenUrls, movie);
+        if (ENABLE_SYNC_TMDB_GALLERY_IMAGES) {
+            collectTmdbGalleryImages(images, seenUrls, movie);
+        }
 
         return images;
     }
@@ -1062,11 +1457,268 @@ public class HomeController {
             List<Map<String, Object>> supplementalMovies
     ) {
         List<Map<String, Object>> mergedMovies = new ArrayList<>();
-        LinkedHashSet<String> seenKeys = new LinkedHashSet<>();
 
-        appendUniqueMovies(mergedMovies, seenKeys, primaryMovies);
-        appendUniqueMovies(mergedMovies, seenKeys, supplementalMovies);
+        appendMergedMovies(mergedMovies, primaryMovies);
+        appendMergedMovies(mergedMovies, supplementalMovies);
         return mergedMovies;
+    }
+
+    private void appendMergedMovies(List<Map<String, Object>> target, List<Map<String, Object>> movies) {
+        for (Map<String, Object> movie : movies) {
+            Map<String, Object> preparedMovie = prepareListingMovie(movie);
+            int existingIndex = findDuplicateMovieIndex(target, preparedMovie);
+            if (existingIndex >= 0) {
+                target.set(existingIndex, mergeListingMovies(target.get(existingIndex), preparedMovie));
+                continue;
+            }
+            target.add(preparedMovie);
+        }
+    }
+
+    private int findDuplicateMovieIndex(List<Map<String, Object>> movies, Map<String, Object> candidate) {
+        for (int index = 0; index < movies.size(); index++) {
+            if (isSameMovie(movies.get(index), candidate)) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private Map<String, Object> prepareListingMovie(Map<String, Object> movie) {
+        Map<String, Object> prepared = new HashMap<>(movie);
+        String source = normalizeSourceKey(prepared.get("source"));
+        if (source.isBlank()) {
+            source = SOURCE_KK;
+        }
+
+        String slug = resolveFirstMovieText(prepared, "slug");
+        prepared.put("source", source);
+        prepared.put("source_label", getSourceLabel(source));
+        prepared.put("detail_url", buildDetailUrl(slug, source));
+        prepared.put("watch_url", buildWatchBaseUrl(slug, source));
+        prepared.put("source_options", buildListingSourceOptions(prepared));
+        prepared.put("source_count", 1);
+        return prepared;
+    }
+
+    private Map<String, Object> mergeListingMovies(Map<String, Object> existing, Map<String, Object> candidate) {
+        Map<String, Object> merged = new HashMap<>(existing);
+        for (Map.Entry<String, Object> entry : candidate.entrySet()) {
+            if (isMeaningfulValue(merged.get(entry.getKey())) || !isMeaningfulValue(entry.getValue())) {
+                continue;
+            }
+            merged.put(entry.getKey(), entry.getValue());
+        }
+
+        List<Map<String, Object>> sourceOptions = new ArrayList<>();
+        appendListingSourceOptions(sourceOptions, safeList(existing.get("source_options")));
+        appendListingSourceOptions(sourceOptions, safeList(candidate.get("source_options")));
+        merged.put("source_options", sourceOptions);
+        merged.put("source_count", sourceOptions.size());
+        merged.put("sources", sourceOptions.stream().map(option -> option.get("source")).toList());
+        merged.put("source_label", buildSourceSummaryLabel(sourceOptions));
+        return merged;
+    }
+
+    private List<Map<String, Object>> buildListingSourceOptions(Map<String, Object> movie) {
+        String source = normalizeSourceKey(movie.get("source"));
+        if (source.isBlank()) {
+            source = SOURCE_KK;
+        }
+
+        String slug = resolveFirstMovieText(movie, "slug");
+        Map<String, Object> option = new LinkedHashMap<>();
+        option.put("source", source);
+        option.put("label", getSourceLabel(source));
+        option.put("slug", slug);
+        option.put("detail_url", buildDetailUrl(slug, source));
+        option.put("watch_url", buildWatchBaseUrl(slug, source));
+        return new ArrayList<>(List.of(option));
+    }
+
+    private void appendListingSourceOptions(
+            List<Map<String, Object>> target,
+            List<Map<String, Object>> sourceOptions
+    ) {
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> existing : target) {
+            seen.add(String.valueOf(existing.getOrDefault("source", "")));
+        }
+
+        for (Map<String, Object> option : sourceOptions) {
+            String source = normalizeSourceKey(option.get("source"));
+            if (source.isBlank() || !seen.add(source)) {
+                continue;
+            }
+
+            Map<String, Object> normalizedOption = new LinkedHashMap<>(option);
+            normalizedOption.put("source", source);
+            normalizedOption.put("label", getSourceLabel(source));
+            target.add(normalizedOption);
+        }
+    }
+
+    private boolean isMeaningfulValue(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof CharSequence sequence) {
+            String text = sequence.toString().trim();
+            return !text.isBlank() && !"null".equalsIgnoreCase(text) && !"n/a".equalsIgnoreCase(text);
+        }
+        if (value instanceof Iterable<?> iterable) {
+            return iterable.iterator().hasNext();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
+
+    private String buildSourceSummaryLabel(List<Map<String, Object>> sourceOptions) {
+        if (sourceOptions.isEmpty()) {
+            return "";
+        }
+
+        return String.join(" + ", sourceOptions.stream()
+                .map(option -> String.valueOf(option.getOrDefault("label", "")))
+                .filter(label -> !label.isBlank())
+                .toList());
+    }
+
+    private boolean isSameMovie(Map<String, Object> first, Map<String, Object> second) {
+        if (first == null || second == null || first.isEmpty() || second.isEmpty()) {
+            return false;
+        }
+
+        if (hasMatchingExternalId(first, second, "tmdb", "tmdb_id")
+                || hasMatchingExternalId(first, second, "imdb", "imdb_id")) {
+            return true;
+        }
+
+        String firstSlug = normalizeSlugForMatch(resolveFirstMovieText(first, "slug"));
+        String secondSlug = normalizeSlugForMatch(resolveFirstMovieText(second, "slug"));
+        if (!firstSlug.isBlank() && firstSlug.equals(secondSlug)) {
+            return true;
+        }
+
+        int firstYear = resolveMovieReleaseYear(first);
+        int secondYear = resolveMovieReleaseYear(second);
+        if (firstYear > 0 && secondYear > 0 && firstYear != secondYear) {
+            return false;
+        }
+
+        List<String> firstTitles = buildMovieTitleKeys(first);
+        List<String> secondTitles = buildMovieTitleKeys(second);
+        boolean exactTitleMatch = false;
+        for (String firstTitle : firstTitles) {
+            for (String secondTitle : secondTitles) {
+                if (firstTitle.equals(secondTitle) && firstTitle.length() >= 3) {
+                    exactTitleMatch = true;
+                }
+
+                if (firstYear > 0 && secondYear > 0 && hasStrongTitleOverlap(firstTitle, secondTitle)) {
+                    return true;
+                }
+            }
+        }
+
+        if (!exactTitleMatch) {
+            return false;
+        }
+
+        if (firstYear > 0 || secondYear > 0) {
+            return true;
+        }
+
+        String firstOriginal = normalizeMovieIdentityText(resolveFirstMovieText(first, "original_name", "origin_name"));
+        String secondOriginal = normalizeMovieIdentityText(resolveFirstMovieText(second, "original_name", "origin_name"));
+        if (!firstOriginal.isBlank() && !secondOriginal.isBlank()) {
+            return firstOriginal.equals(secondOriginal);
+        }
+
+        return firstTitles.stream().anyMatch(this::isSpecificMovieTitle);
+    }
+
+    private boolean hasMatchingExternalId(
+            Map<String, Object> first,
+            Map<String, Object> second,
+            String groupKey,
+            String directKey
+    ) {
+        String firstId = normalizeMovieIdentityText(resolveExternalMovieText(first, groupKey, "id", directKey));
+        String secondId = normalizeMovieIdentityText(resolveExternalMovieText(second, groupKey, "id", directKey));
+        return !firstId.isBlank() && firstId.equals(secondId);
+    }
+
+    private List<String> buildMovieTitleKeys(Map<String, Object> movie) {
+        LinkedHashSet<String> titles = new LinkedHashSet<>();
+        addMovieTitleKey(titles, resolveFirstMovieText(movie, "name", "title"));
+        addMovieTitleKey(titles, resolveFirstMovieText(movie, "original_name", "origin_name"));
+        return new ArrayList<>(titles);
+    }
+
+    private void addMovieTitleKey(LinkedHashSet<String> titles, String title) {
+        String normalized = normalizeMovieIdentityText(title);
+        if (normalized.length() >= 3) {
+            titles.add(normalized);
+        }
+    }
+
+    private boolean hasStrongTitleOverlap(String firstTitle, String secondTitle) {
+        List<String> firstTokens = titleTokens(firstTitle);
+        List<String> secondTokens = titleTokens(secondTitle);
+        if (firstTokens.size() < 2 || secondTokens.size() < 2) {
+            return false;
+        }
+
+        int matches = 0;
+        for (String token : firstTokens) {
+            if (secondTokens.contains(token)) {
+                matches++;
+            }
+        }
+
+        double firstCoverage = (double) matches / firstTokens.size();
+        double secondCoverage = (double) matches / secondTokens.size();
+        return firstCoverage >= 0.86 && secondCoverage >= 0.86;
+    }
+
+    private boolean isSpecificMovieTitle(String title) {
+        return title.length() >= 10 || titleTokens(title).size() >= 3;
+    }
+
+    private List<String> titleTokens(String title) {
+        List<String> tokens = new ArrayList<>();
+        for (String token : normalizeMovieIdentityText(title).split(" ")) {
+            if (token.length() > 1) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    private int resolveMovieReleaseYear(Map<String, Object> movie) {
+        for (String key : List.of("year", "release_year", "release_date", "released", "date")) {
+            int year = extractYear(movie.get(key));
+            if (year > 0) {
+                return year;
+            }
+        }
+        return 0;
+    }
+
+    private String normalizeSlugForMatch(String slug) {
+        return normalizeMovieIdentityText(slug).replace(" ", "-");
+    }
+
+    private String normalizeMovieIdentityText(String value) {
+        String normalized = normalizeLanguageText(String.valueOf(value == null ? "" : value));
+        return normalized
+                .replaceAll("\\b(tmdb|imdb|vietsub|thuyet minh|long tieng|phu de|hd|fhd|full|trailer)\\b", " ")
+                .replaceAll("[^\\p{IsAlphabetic}\\p{IsDigit}]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private List<Map<String, Object>> limitListingMovies(List<Map<String, Object>> movies) {
@@ -1078,23 +1730,73 @@ public class HomeController {
     }
 
     private List<Map<String, Object>> buildWeeklyTopMovies(String currentSlug) {
+        return buildWeeklyTopMovies(currentSlug, loadWeeklyTopMoviePool());
+    }
+
+    private List<Map<String, Object>> buildWeeklyTopMovies(
+            String currentSlug,
+            List<Map<String, Object>> cachedPool
+    ) {
+        String normalizedCurrentSlug = currentSlug == null ? "" : currentSlug.trim().toLowerCase(Locale.ROOT);
+        if (cachedPool.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> item : cachedPool) {
+            String slug = resolveFirstMovieText(item, "slug").trim().toLowerCase(Locale.ROOT);
+            if (!normalizedCurrentSlug.isBlank() && normalizedCurrentSlug.equals(slug)) {
+                continue;
+            }
+            result.add(new HashMap<>(item));
+            if (result.size() >= 10) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private CompletableFuture<List<Map<String, Object>>> loadWeeklyTopMoviePoolAsync() {
+        return CompletableFuture.supplyAsync(this::loadWeeklyTopMoviePool);
+    }
+
+    private List<Map<String, Object>> awaitWeeklyTopMoviePool(
+            CompletableFuture<List<Map<String, Object>>> future
+    ) {
+        if (future == null) {
+            return Collections.emptyList();
+        }
         try {
-            java.util.LinkedHashMap<String, Map<String, Object>> candidates = new java.util.LinkedHashMap<>();
-            String normalizedCurrentSlug = currentSlug == null ? "" : currentSlug.trim().toLowerCase(Locale.ROOT);
+            List<Map<String, Object>> movies = future.join();
+            return movies != null ? movies : Collections.emptyList();
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
+    }
+
+    private List<Map<String, Object>> loadWeeklyTopMoviePool() {
+        try {
             LocalDate weekStart = LocalDate.now(APP_ZONE).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            String cacheKey = weekStart.toString();
+            TimedCacheEntry<List<Map<String, Object>>> cached = weeklyTopCache.get(cacheKey);
+            if (isTimedCacheFresh(cached)) {
+                return cached.value();
+            }
+
+            java.util.LinkedHashMap<String, Map<String, Object>> candidates = new java.util.LinkedHashMap<>();
             LocalDate nextWeekStart = weekStart.plusWeeks(1);
 
             for (int page = 1; page <= WEEKLY_TOP_SOURCE_PAGES; page++) {
                 addWeeklyTopCandidates(
                         candidates,
-                        normalizedCurrentSlug,
+                        "",
                         extractMovieItems(movieApiService.getMoviesData("phim-moi", page), "phim-moi"),
                         weekStart,
                         nextWeekStart
                 );
                 addWeeklyTopCandidates(
                         candidates,
-                        normalizedCurrentSlug,
+                        "",
                         extractMovieItems(movieApiService.getOphimMoviesData("phim-moi", page), "phim-moi", "ophim"),
                         weekStart,
                         nextWeekStart
@@ -1129,15 +1831,16 @@ public class HomeController {
             });
 
             List<Map<String, Object>> result = new ArrayList<>();
-            int limit = Math.min(10, topMovies.size());
+            int limit = Math.min(16, topMovies.size());
             for (int index = 0; index < limit; index++) {
-                Map<String, Object> item = new HashMap<>(topMovies.get(index));
+                Map<String, Object> item = prepareListingMovie(topMovies.get(index));
                 item.put("top_poster_url", resolveTopMoviePosterUrl(item));
                 item.put("top_rating_label", resolveTopMovieRatingLabel(item));
                 item.put("top_episode_label", resolveTopMovieEpisodeLabel(item));
                 item.put("top_original_name", resolveFirstMovieText(item, "original_name", "origin_name"));
                 result.add(item);
             }
+            weeklyTopCache.put(cacheKey, new TimedCacheEntry<>(result, System.currentTimeMillis() + WEEKLY_TOP_TTL_MILLIS));
             return result;
         } catch (Exception ex) {
             log.warn("Cannot build weekly top movies", ex);
@@ -1362,22 +2065,6 @@ public class HomeController {
         }
 
         return resolveCardEpisodeLabel(movie, "phim-moi");
-    }
-
-    private void appendUniqueMovies(
-            List<Map<String, Object>> target,
-            LinkedHashSet<String> seenKeys,
-            List<Map<String, Object>> movies
-    ) {
-        for (Map<String, Object> movie : movies) {
-            String slug = String.valueOf(movie.getOrDefault("slug", "")).trim();
-            String key = slug.isBlank()
-                    ? normalizeLanguageText(String.valueOf(movie.getOrDefault("name", "")))
-                    : slug;
-            if (key.isBlank() || seenKeys.add(key)) {
-                target.add(movie);
-            }
-        }
     }
 
     private Map<String, Object> extractMovieDetail(Map<String, Object> payload) {
@@ -1649,6 +2336,65 @@ public class HomeController {
 
     private boolean isOphimSource(String source) {
         return source != null && "ophim".equalsIgnoreCase(source.trim());
+    }
+
+    private String normalizeSourceKey(Object source) {
+        String normalized = normalizeMovieTextValue(source).toLowerCase(Locale.ROOT);
+        if (normalized.equals(SOURCE_OPHIM) || normalized.contains("ophim")) {
+            return SOURCE_OPHIM;
+        }
+        if (normalized.equals(SOURCE_KK)
+                || normalized.equals("kkphim")
+                || normalized.contains("phimapi")
+                || normalized.contains("kkphim")) {
+            return SOURCE_KK;
+        }
+        return "";
+    }
+
+    private String oppositeSource(String source) {
+        String sourceKey = normalizeSourceKey(source);
+        if (SOURCE_OPHIM.equals(sourceKey)) {
+            return SOURCE_KK;
+        }
+        if (SOURCE_KK.equals(sourceKey)) {
+            return SOURCE_OPHIM;
+        }
+        return "";
+    }
+
+    private String getSourceLabel(String source) {
+        return SOURCE_OPHIM.equals(normalizeSourceKey(source)) ? "OPhim" : "KK";
+    }
+
+    private String buildDetailUrl(String slug, String source) {
+        String normalizedSlug = String.valueOf(slug == null ? "" : slug).trim();
+        if (normalizedSlug.isBlank()) {
+            return "";
+        }
+        return appendSourceQuery(
+                "/phim/" + org.springframework.web.util.UriUtils.encodePathSegment(normalizedSlug, java.nio.charset.StandardCharsets.UTF_8),
+                source
+        );
+    }
+
+    private String buildWatchBaseUrl(String slug, String source) {
+        String normalizedSlug = String.valueOf(slug == null ? "" : slug).trim();
+        if (normalizedSlug.isBlank()) {
+            return "";
+        }
+        return appendSourceQuery(
+                "/xem/" + org.springframework.web.util.UriUtils.encodePathSegment(normalizedSlug, java.nio.charset.StandardCharsets.UTF_8),
+                source
+        );
+    }
+
+    private String appendSourceQuery(String url, String source) {
+        String sourceKey = normalizeSourceKey(source);
+        if (url == null || url.isBlank() || sourceKey.isBlank()) {
+            return url == null ? "" : url;
+        }
+        return url + "?source=" + org.springframework.web.util.UriUtils.encodeQueryParam(sourceKey, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private boolean looksLikeImageFile(String path) {
@@ -1961,6 +2707,31 @@ public class HomeController {
         }
     }
 
+    private CompletableFuture<Map<String, Object>> loadMovieApiPayloadAsync(
+            java.util.function.Supplier<Map<String, Object>> supplier
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Map<String, Object> payload = supplier.get();
+                return payload != null ? payload : Collections.emptyMap();
+            } catch (Exception ignored) {
+                return Collections.emptyMap();
+            }
+        });
+    }
+
+    private Map<String, Object> awaitMovieApiPayload(CompletableFuture<Map<String, Object>> future) {
+        if (future == null) {
+            return Collections.emptyMap();
+        }
+        try {
+            Map<String, Object> payload = future.join();
+            return payload != null ? payload : Collections.emptyMap();
+        } catch (Exception ignored) {
+            return Collections.emptyMap();
+        }
+    }
+
     private int resolveTotalPages(Map<String, Object> payload, int totalItems) {
         Map<String, Object> paginationRoot = safeMap(payload.get("pagination"));
         int totalPages = extractPositiveInt(
@@ -2260,6 +3031,10 @@ public class HomeController {
     }
 
     private String buildWatchUrl(String slug, Map<String, Object> episode) {
+        return buildWatchUrl(slug, episode, String.valueOf(episode == null ? "" : episode.getOrDefault("source", "")));
+    }
+
+    private String buildWatchUrl(String slug, Map<String, Object> episode, String source) {
         if (slug == null || slug.isBlank() || episode == null || episode.isEmpty()) {
             return "";
         }
@@ -2271,14 +3046,14 @@ public class HomeController {
 
         String serverName = String.valueOf(episode.getOrDefault("server_name", ""));
         String watchUrl = "/xem/" + slug + "/" + tapSlug;
-        if (serverName.isBlank()) {
-            return watchUrl;
-        }
-
-        return watchUrl + "?server=" + org.springframework.web.util.UriUtils.encodeQueryParam(serverName, java.nio.charset.StandardCharsets.UTF_8);
+        return appendPlaybackQuery(watchUrl, source, serverName);
     }
 
     private String buildStreamUrl(String slug, Map<String, Object> episode) {
+        return buildStreamUrl(slug, episode, String.valueOf(episode == null ? "" : episode.getOrDefault("source", "")));
+    }
+
+    private String buildStreamUrl(String slug, Map<String, Object> episode, String source) {
         if (slug == null || slug.isBlank() || episode == null || episode.isEmpty()) {
             return "";
         }
@@ -2296,18 +3071,24 @@ public class HomeController {
 
         String serverName = String.valueOf(episode.getOrDefault("server_name", ""));
         String streamUrl = "/proxy/hls/" + slug + "/" + tapSlug + ".m3u8";
-        if (serverName.isBlank()) {
-            return streamUrl;
-        }
-
-        return streamUrl + "?server=" + org.springframework.web.util.UriUtils.encodeQueryParam(serverName, java.nio.charset.StandardCharsets.UTF_8);
+        return appendPlaybackQuery(streamUrl, source, serverName);
     }
 
-    private String findEpisodeStreamSource(String slug, String server, String tap) {
-        Map<String, Object> payload = movieApiService.getMovieDetailData(slug);
-        Map<String, Object> movie = extractMovieDetail(payload);
-        List<Map<String, Object>> episodes = extractEpisodeServers(movie, payload);
-        Map<String, Object> selectedEpisode = findSelectedEpisode(episodes, server, tap);
+    private String appendPlaybackQuery(String url, String source, String serverName) {
+        List<String> params = new ArrayList<>();
+        String sourceKey = normalizeSourceKey(source);
+        if (!sourceKey.isBlank()) {
+            params.add("source=" + org.springframework.web.util.UriUtils.encodeQueryParam(sourceKey, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (serverName != null && !serverName.isBlank()) {
+            params.add("server=" + org.springframework.web.util.UriUtils.encodeQueryParam(serverName, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return params.isEmpty() ? url : url + "?" + String.join("&", params);
+    }
+
+    private String findEpisodeStreamSource(String slug, String source, String server, String tap) {
+        MovieSourceData activeSource = loadMovieSourceData(slug, source);
+        Map<String, Object> selectedEpisode = findSelectedEpisode(activeSource.episodes(), server, tap);
         return movieApiService.normalizeExternalUrl(String.valueOf(selectedEpisode.getOrDefault("m3u8", "")));
     }
 
@@ -2361,5 +3142,24 @@ public class HomeController {
         }
 
         return url.toLowerCase().contains(".m3u8");
+    }
+
+    private record MovieSourceData(
+            String source,
+            String label,
+            String slug,
+            Map<String, Object> payload,
+            Map<String, Object> movie,
+            List<Map<String, Object>> episodes
+    ) {
+    }
+
+    private record MovieSourceContext(
+            MovieSourceData active,
+            List<MovieSourceData> availableSources
+    ) {
+    }
+
+    private record TimedCacheEntry<T>(T value, long expiresAt) {
     }
 }

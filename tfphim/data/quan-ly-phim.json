@@ -1,6 +1,6 @@
 {
   "version" : 1,
-  "updated_at" : "2026-07-30T07:50:00.458742100Z",
+  "updated_at" : "2026-08-06T10:52:28.411807Z",
   "japanMaze" : [ {
     "slug" : "dao-hai-tac",
     "source" : "kk",
@@ -13,9 +13,9 @@
     "quality" : "FHD",
     "lang" : "Vietsub + Lồng Tiếng",
     "language" : "Vietsub + Lồng Tiếng",
-    "episode_current" : "Tập 1171",
-    "current_episode" : "Tập 1171",
-    "status" : "Tập 1171",
+    "episode_current" : "Tập 1172",
+    "current_episode" : "Tập 1172",
+    "status" : "Tập 1172",
     "year" : "1999",
     "type" : "hoathinh",
     "movie_type" : "hoathinh",
@@ -25,8 +25,8 @@
     "country" : "Nhật Bản",
     "enabled" : true,
     "order" : 1,
-    "added_at" : "2026-07-30T03:17:10.822Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "added_at" : "2026-08-03T13:26:40.702Z",
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "thanh-guom-diet-quy-vo-han-thanh",
     "source" : "kk",
@@ -56,7 +56,7 @@
     "enabled" : true,
     "order" : 2,
     "added_at" : "2026-07-30T03:15:30.509Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "tham-tu-lung-danh-conan-thien-than-sa-nga-tren-xa-lo",
     "source" : "kk",
@@ -86,7 +86,7 @@
     "enabled" : true,
     "order" : 3,
     "added_at" : "2026-07-30T03:17:01.079Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "doraemon-nobita-va-cuoc-phieu-luu-vao-the-gioi-trong-tranh",
     "source" : "kk",
@@ -116,7 +116,7 @@
     "enabled" : true,
     "order" : 4,
     "added_at" : "2026-07-30T03:17:57.060Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "bao-thu-2026",
     "source" : "kk",
@@ -144,7 +144,7 @@
     "enabled" : true,
     "order" : 5,
     "added_at" : "2026-07-30T03:18:48.504Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "ngay-dep-troi-ta-thanh-doi",
     "source" : "kk",
@@ -172,7 +172,7 @@
     "enabled" : true,
     "order" : 6,
     "added_at" : "2026-07-30T03:19:28.823Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "xanh-tham-phan-3",
     "source" : "kk",
@@ -202,35 +202,7 @@
     "enabled" : true,
     "order" : 7,
     "added_at" : "2026-07-30T03:20:21.008Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
-  }, {
-    "slug" : "shin-cau-be-but-chi-33-nong-bong-tay-nhung-vu-cong-sieu-cay-kasukabe",
-    "source" : "kk",
-    "name" : "Shin - Cậu Bé Bút Chì 33: Nóng Bỏng Tay! Những Vũ Công Siêu Cay Kasukabe",
-    "origin_name" : "Crayon Shin-chan the Movie: Super Hot! The Spicy Kasukabe Dancers",
-    "original_name" : "Crayon Shin-chan the Movie: Super Hot! The Spicy Kasukabe Dancers",
-    "poster_url" : "https://phimimg.com/upload/vod/20260410-1/0a80b37b0d5530c12275361e6b9cf64b.jpg",
-    "thumb_url" : "https://phimimg.com/upload/vod/20260410-1/0e99b1339841b7fa4efd1ad7a49a37b1.jpg",
-    "card_image_url" : "https://phimimg.com/upload/vod/20260410-1/0a80b37b0d5530c12275361e6b9cf64b.jpg",
-    "quality" : "FHD",
-    "lang" : "Vietsub + Lồng Tiếng",
-    "language" : "Vietsub + Lồng Tiếng",
-    "episode_current" : "Full",
-    "current_episode" : "Full",
-    "status" : "Full",
-    "year" : "2025",
-    "type" : "hoathinh",
-    "movie_type" : "hoathinh",
-    "category_type" : "hoathinh",
-    "time" : "105 phút",
-    "category" : "Phiêu Lưu - Hài Hước - Chính Kịch - Tâm Lý",
-    "country" : "Nhật Bản",
-    "movie_tmdb_rating" : "6.8",
-    "tmdb_rating" : "6.8",
-    "enabled" : true,
-    "order" : 8,
-    "added_at" : "2026-07-30T03:23:25.356Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "dai-chien-nguoi-khong-lo-lan-tan-cong-cuoi-cung-dai-chien-titan",
     "source" : "kk",
@@ -258,9 +230,9 @@
     "imdb_rating" : "9.2",
     "tmdb_rating" : "8.7",
     "enabled" : true,
-    "order" : 9,
+    "order" : 8,
     "added_at" : "2026-07-30T03:25:03.249Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   }, {
     "slug" : "lau-dai-di-dong-cua-howl",
     "source" : "ophim",
@@ -284,8 +256,36 @@
     "category" : "Gia Đình",
     "country" : "Nhật Bản",
     "enabled" : true,
+    "order" : 9,
+    "added_at" : "2026-07-31T01:56:38.544Z",
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
+  }, {
+    "slug" : "shin-cau-be-but-chi-33-nong-bong-tay-nhung-vu-cong-sieu-cay-kasukabe",
+    "source" : "kk",
+    "name" : "Shin - Cậu Bé Bút Chì 33: Nóng Bỏng Tay! Những Vũ Công Siêu Cay Kasukabe",
+    "origin_name" : "Crayon Shin-chan the Movie: Super Hot! The Spicy Kasukabe Dancers",
+    "original_name" : "Crayon Shin-chan the Movie: Super Hot! The Spicy Kasukabe Dancers",
+    "poster_url" : "https://phimimg.com/upload/vod/20260410-1/0a80b37b0d5530c12275361e6b9cf64b.jpg",
+    "thumb_url" : "https://phimimg.com/upload/vod/20260410-1/0e99b1339841b7fa4efd1ad7a49a37b1.jpg",
+    "card_image_url" : "https://phimimg.com/upload/vod/20260410-1/0a80b37b0d5530c12275361e6b9cf64b.jpg",
+    "quality" : "FHD",
+    "lang" : "Vietsub + Lồng Tiếng",
+    "language" : "Vietsub + Lồng Tiếng",
+    "episode_current" : "Full",
+    "current_episode" : "Full",
+    "status" : "Full",
+    "year" : "2025",
+    "type" : "hoathinh",
+    "movie_type" : "hoathinh",
+    "category_type" : "hoathinh",
+    "time" : "105 phút",
+    "category" : "Phiêu Lưu - Hài Hước - Chính Kịch - Tâm Lý",
+    "country" : "Nhật Bản",
+    "movie_tmdb_rating" : "6.8",
+    "tmdb_rating" : "6.8",
+    "enabled" : true,
     "order" : 10,
-    "added_at" : "2026-07-30T03:26:01.652Z",
-    "updated_at" : "2026-07-30T07:50:00.456732Z"
+    "added_at" : "2026-07-31T01:56:58.200Z",
+    "updated_at" : "2026-08-06T10:52:28.410811900Z"
   } ]
 }

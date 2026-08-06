@@ -1,18 +1,20 @@
 (() => {
-    const page = document.querySelector("[data-admin-movies-page]");
+    const page = document.querySelector("[data-admin-hero-page]");
     if (!page) {
         return;
     }
 
-    const MANAGED_API_URL = "/api/quan-ly-phim/japan-maze";
+    const HERO_API_URL = "/api/quan-ly-phim/hero-banner";
+    const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original";
+    const MAX_HERO_ITEMS = 6;
+    const MAX_SEARCH_RESULTS = 72;
     const API_SEARCH_URLS = {
         kk: "/api/movies/search",
         ophim: "/api/movies/ophim/search"
     };
-    const MAX_SEARCH_RESULTS = 72;
 
     const state = {
-        selected: [],
+        heroes: [],
         results: [],
         source: "all",
         hasSearched: false,
@@ -20,21 +22,19 @@
     };
 
     const els = {
-        searchForm: document.querySelector("[data-admin-search-form]"),
-        searchInput: document.getElementById("adminMovieSearch"),
-        resultCount: document.querySelector("[data-admin-result-count]"),
-        results: document.querySelector("[data-admin-results]"),
-        selectedList: document.querySelector("[data-admin-selected-list]"),
-        selectedCounts: Array.from(document.querySelectorAll("[data-admin-selected-count]")),
-        enabledCounts: Array.from(document.querySelectorAll("[data-admin-enabled-count]")),
-        disabledCounts: Array.from(document.querySelectorAll("[data-admin-disabled-count]")),
-        saveState: document.querySelector("[data-admin-save-state]"),
-        saveOrder: document.querySelector("[data-admin-save-order]"),
-        sourceInput: document.querySelector("[data-admin-source]"),
-        sourceWidget: document.querySelector("[data-admin-source-widget]"),
-        sourceTrigger: document.querySelector("[data-admin-source-trigger]"),
-        sourceLabel: document.querySelector("[data-admin-source-label]"),
-        sourceOptions: Array.from(document.querySelectorAll("[data-admin-source-option]"))
+        searchForm: document.querySelector("[data-admin-hero-search-form]"),
+        searchInput: document.getElementById("adminHeroMovieSearch"),
+        resultCount: document.querySelector("[data-admin-hero-result-count]"),
+        results: document.querySelector("[data-admin-hero-results]"),
+        editor: document.querySelector("[data-admin-hero-editor]"),
+        saveState: document.querySelector("[data-admin-hero-save-state]"),
+        saveButton: document.querySelector("[data-admin-hero-save]"),
+        heroCounts: Array.from(document.querySelectorAll("[data-admin-hero-count]")),
+        sourceInput: document.querySelector("[data-admin-hero-source]"),
+        sourceWidget: document.querySelector("[data-admin-hero-source-widget]"),
+        sourceTrigger: document.querySelector("[data-admin-hero-source-trigger]"),
+        sourceLabel: document.querySelector("[data-admin-hero-source-label]"),
+        sourceOptions: Array.from(document.querySelectorAll("[data-admin-hero-source-option]"))
     };
 
     const SOURCE_LABELS = {
@@ -57,30 +57,6 @@
         }
     }
 
-    function closeSourceMenu() {
-        els.sourceWidget?.classList.remove("is-open");
-        els.sourceTrigger?.setAttribute("aria-expanded", "false");
-    }
-
-    function setSource(value, shouldSearch = false) {
-        const source = Object.prototype.hasOwnProperty.call(SOURCE_LABELS, value) ? value : "all";
-        state.source = source;
-        if (els.sourceInput) {
-            els.sourceInput.value = source;
-        }
-        if (els.sourceLabel) {
-            els.sourceLabel.textContent = SOURCE_LABELS[source];
-        }
-        els.sourceOptions.forEach((option) => {
-            const isSelected = option.dataset.adminSourceOption === source;
-            option.classList.toggle("is-selected", isSelected);
-            option.setAttribute("aria-selected", String(isSelected));
-        });
-        if (shouldSearch && text(els.searchInput?.value)) {
-            searchMovies(els.searchInput.value);
-        }
-    }
-
     function setSaveState(status, label) {
         if (!els.saveState) {
             return;
@@ -91,7 +67,7 @@
             : status === "error"
                 ? "triangle-alert"
                 : "circle-check";
-        els.saveState.className = `admin-movies-status is-${status}`;
+        els.saveState.className = `admin-save-status is-${status}`;
         els.saveState.innerHTML = `<i data-lucide="${icon}"${status === "saving" ? " class=\"admin-icon-spin\"" : ""} aria-hidden="true"></i><span>${escapeHtml(label)}</span>`;
         refreshIcons();
     }
@@ -174,7 +150,6 @@
         if (typeof window.resolveMovieImageUrl === "function") {
             return text(window.resolveMovieImageUrl(raw, source));
         }
-
         if (raw.startsWith("http://") || raw.startsWith("https://")) {
             return raw;
         }
@@ -192,8 +167,18 @@
         if (/\.(jpe?g|png|webp|avif)$/i.test(normalizedPath)) {
             return `${normalizeSource(source) === "ophim" ? "https://img.ophim.live/uploads/movies/" : "https://img.phimapi.com/uploads/movies/"}${normalizedPath}`;
         }
-
         return raw;
+    }
+
+    function resolveTmdbAssetUrl(url, source = "") {
+        const raw = text(url);
+        if (!raw || raw.toLowerCase() === "null" || raw === "[object Object]") {
+            return "";
+        }
+        if (raw.startsWith("/") && !raw.startsWith("/uploads/") && /\.(jpe?g|png|webp|avif)$/i.test(raw)) {
+            return `${TMDB_IMAGE_BASE_URL}${raw}`;
+        }
+        return resolveImageUrl(raw, source);
     }
 
     function getImage(movie) {
@@ -252,9 +237,7 @@
         const posterUrl = swapOphimImages ? (apiThumbUrl || apiPosterUrl) : apiPosterUrl;
         const thumbUrl = swapOphimImages ? (apiPosterUrl || apiThumbUrl) : apiThumbUrl;
         const cardImageUrl = resolveImageUrl(movie?.card_image_url, normalizedSource)
-            || (normalizedSource === "ophim"
-                ? (posterUrl || thumbUrl)
-                : getImage({ ...movie, source: normalizedSource, poster_url: posterUrl, thumb_url: thumbUrl }));
+            || (normalizedSource === "ophim" ? (posterUrl || thumbUrl) : getImage({ ...movie, source: normalizedSource, poster_url: posterUrl, thumb_url: thumbUrl }));
 
         return {
             slug: text(movie?.slug),
@@ -289,6 +272,8 @@
             movie_tmdb_rating: getRating(movie, "tmdb"),
             imdb_rating: getRating(movie, "imdb"),
             tmdb_rating: getRating(movie, "tmdb"),
+            tmdb_thumb_url: text(movie?.tmdb_thumb_url || movie?.tmdb_backdrop_url || movie?.backdrop_url),
+            tmdb_logo_url: text(movie?.tmdb_logo_url || movie?.logo_url || movie?.clear_logo || movie?.clearlogo),
             enabled: movie?.enabled !== false,
             order: Number.parseInt(movie?.order, 10) || 0,
             added_at: text(movie?.added_at) || new Date().toISOString(),
@@ -298,13 +283,6 @@
 
     function movieKey(movie) {
         return `${normalizeSource(movie?.source)}|${text(movie?.slug).toLowerCase()}`;
-    }
-
-    function normalizeOrder() {
-        state.selected = state.selected.map((movie, index) => ({
-            ...movie,
-            order: index + 1
-        }));
     }
 
     function dedupeMovies(movies) {
@@ -322,9 +300,26 @@
         });
     }
 
-    function isSelected(movie) {
+    function normalizeHeroOrder() {
+        state.heroes = dedupeMovies(state.heroes)
+            .slice(0, MAX_HERO_ITEMS)
+            .map((movie, index) => ({
+                ...movie,
+                enabled: true,
+                order: index + 1
+            }));
+    }
+
+    function syncHeroCount() {
+        const label = `${state.heroes.length}/${MAX_HERO_ITEMS}`;
+        els.heroCounts.forEach((element) => {
+            element.textContent = label;
+        });
+    }
+
+    function isHeroSelected(movie) {
         const key = movieKey(movie);
-        return state.selected.some((selectedMovie) => movieKey(selectedMovie) === key);
+        return state.heroes.some((hero) => movieKey(hero) === key);
     }
 
     function renderLanguageBadges(movie) {
@@ -367,6 +362,7 @@
             return;
         }
 
+        syncHeroCount();
         els.resultCount.textContent = state.results.length
             ? `${state.results.length} k\u1ebft qu\u1ea3`
             : state.hasSearched
@@ -384,9 +380,13 @@
             return;
         }
 
+        const isFull = state.heroes.length >= MAX_HERO_ITEMS;
         els.results.innerHTML = state.results.map((movie, index) => {
-            const selected = isSelected(movie);
+            const selected = isHeroSelected(movie);
+            const disabled = selected || isFull;
             const image = getImage(movie);
+            const icon = selected ? "badge-check" : isFull ? "ban" : "image-plus";
+            const label = selected ? "\u0110\u00e3 ch\u1ecdn" : isFull ? "T\u1ed1i \u0111a 6" : "Ch\u1ecdn hero";
             return `
                 <article class="admin-result-card${selected ? " is-selected" : ""}">
                     <div class="admin-movie-thumb">
@@ -399,9 +399,9 @@
                         <div class="admin-result-stats">${renderResultStats(movie)}</div>
                         <div class="admin-language-row">${renderLanguageBadges(movie)}</div>
                     </div>
-                    <button class="admin-add-btn" type="button" data-admin-add="${index}" ${selected ? "disabled" : ""}>
-                        <i data-lucide="${selected ? "check" : "plus"}" aria-hidden="true"></i>
-                        <span>${selected ? "\u0110\u00e3 ch\u1ecdn" : "Th\u00eam"}</span>
+                    <button class="admin-select-btn" type="button" data-admin-hero-pick="${index}" ${disabled ? "disabled" : ""}>
+                        <i data-lucide="${icon}" aria-hidden="true"></i>
+                        <span>${label}</span>
                     </button>
                 </article>
             `;
@@ -409,88 +409,181 @@
         refreshIcons();
     }
 
-    function renderSelected() {
-        if (!els.selectedList) {
+    function getHeroBackdrop(movie) {
+        return resolveTmdbAssetUrl(movie?.tmdb_thumb_url, movie?.source)
+            || resolveImageUrl(movie?.thumb_url, movie?.source)
+            || resolveImageUrl(movie?.poster_url, movie?.source)
+            || "https://via.placeholder.com/1280x720?text=Hero";
+    }
+
+    function getHeroLogo(movie) {
+        return resolveTmdbAssetUrl(movie?.tmdb_logo_url, movie?.source);
+    }
+
+    function syncHeroPreview(index) {
+        const movie = state.heroes[index];
+        const preview = els.editor?.querySelector(`[data-admin-hero-preview][data-admin-hero-index="${index}"]`);
+        if (!preview || !movie) {
             return;
         }
 
-        normalizeOrder();
-        const enabledCount = state.selected.filter((movie) => movie.enabled !== false).length;
-        const disabledCount = state.selected.length - enabledCount;
-        els.selectedCounts.forEach((element) => {
-            element.textContent = String(state.selected.length);
-        });
-        els.enabledCounts.forEach((element) => {
-            element.textContent = String(enabledCount);
-        });
-        els.disabledCounts.forEach((element) => {
-            element.textContent = String(disabledCount);
-        });
+        const backdrop = getHeroBackdrop(movie).replace(/["\\]/g, "\\$&");
+        preview.style.backgroundImage = `
+            linear-gradient(90deg, rgba(8, 11, 16, 0.92), rgba(8, 11, 16, 0.22)),
+            url("${backdrop}")
+        `;
 
-        if (!state.selected.length) {
-            els.selectedList.innerHTML = `
+        const logoImage = preview.querySelector("[data-admin-hero-logo]");
+        const fallbackTitle = preview.querySelector("[data-admin-hero-fallback-title]");
+        const logoUrl = getHeroLogo(movie);
+        if (!logoImage || !fallbackTitle) {
+            return;
+        }
+
+        if (logoUrl) {
+            logoImage.hidden = false;
+            logoImage.src = logoUrl;
+            logoImage.onerror = () => {
+                logoImage.hidden = true;
+                fallbackTitle.hidden = false;
+            };
+            fallbackTitle.hidden = true;
+        } else {
+            logoImage.hidden = true;
+            fallbackTitle.hidden = false;
+        }
+    }
+
+    function syncHeroPreviews() {
+        state.heroes.forEach((movie, index) => syncHeroPreview(index));
+    }
+
+    function renderHeroCard(movie, index) {
+        const name = movie.name || movie.slug;
+        const originalName = movie.original_name || movie.origin_name || "";
+        const meta = [movie.year, movie.quality, movie.episode_current || movie.current_episode]
+            .map(text)
+            .filter(Boolean)
+            .join(" - ");
+
+        return `
+            <article class="admin-hero-card" data-admin-hero-index="${index}">
+                <div class="admin-hero-preview" data-admin-hero-preview data-admin-hero-index="${index}">
+                    <span class="admin-hero-order">${index + 1}</span>
+                    <span class="admin-hero-preview__content">
+                        <img class="admin-hero-logo" data-admin-hero-logo alt="${escapeHtml(name)}" hidden>
+                        <strong class="admin-hero-preview__title" data-admin-hero-fallback-title>${escapeHtml(name)}</strong>
+                        ${meta ? `<span class="admin-hero-preview__meta">${escapeHtml(meta)}</span>` : ""}
+                    </span>
+                </div>
+                <div class="admin-hero-form">
+                    <div class="admin-hero-selected">
+                        <div class="admin-movie-thumb">
+                            <img src="${escapeHtml(getImage(movie))}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">
+                            ${renderSourceChip(movie)}
+                        </div>
+                        <div>
+                            <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+                            ${originalName ? `<p title="${escapeHtml(originalName)}">${escapeHtml(originalName)}</p>` : ""}
+                        </div>
+                        <a class="admin-preview-link" href="${movie.slug ? `/phim/${encodeURIComponent(movie.slug)}` : "#"}">
+                            <i data-lucide="external-link" aria-hidden="true"></i>
+                            <span>Chi ti\u1ebft</span>
+                        </a>
+                    </div>
+
+                    <div class="admin-hero-fields">
+                        <label class="admin-hero-field">
+                            <span>TMDB thumb / backdrop URL</span>
+                            <input type="url"
+                                   inputmode="url"
+                                   autocomplete="off"
+                                   spellcheck="false"
+                                   data-admin-hero-field="tmdb_thumb_url"
+                                   data-admin-hero-index="${index}"
+                                   value="${escapeHtml(movie.tmdb_thumb_url || "")}"
+                                   placeholder="https://image.tmdb.org/t/p/original/...">
+                        </label>
+                        <label class="admin-hero-field">
+                            <span>TMDB logo URL</span>
+                            <input type="url"
+                                   inputmode="url"
+                                   autocomplete="off"
+                                   spellcheck="false"
+                                   data-admin-hero-field="tmdb_logo_url"
+                                   data-admin-hero-index="${index}"
+                                   value="${escapeHtml(movie.tmdb_logo_url || "")}"
+                                   placeholder="https://image.tmdb.org/t/p/original/...">
+                        </label>
+                    </div>
+
+                    <div class="admin-hero-actions">
+                        <button class="admin-action-btn" type="button" data-admin-hero-action="up" data-admin-hero-index="${index}" ${index === 0 ? "disabled" : ""} aria-label="L\u00ean tr\u00ean">
+                            <i data-lucide="chevron-up" aria-hidden="true"></i>
+                        </button>
+                        <button class="admin-action-btn" type="button" data-admin-hero-action="down" data-admin-hero-index="${index}" ${index === state.heroes.length - 1 ? "disabled" : ""} aria-label="Xu\u1ed1ng d\u01b0\u1edbi">
+                            <i data-lucide="chevron-down" aria-hidden="true"></i>
+                        </button>
+                        <button class="admin-action-btn admin-action-btn--save" type="button" data-admin-hero-action="save" data-admin-hero-index="${index}">
+                            <i data-lucide="save" aria-hidden="true"></i>
+                            <span>L\u01b0u</span>
+                        </button>
+                        <button class="admin-action-btn admin-action-btn--danger" type="button" data-admin-hero-action="remove" data-admin-hero-index="${index}">
+                            <i data-lucide="trash-2" aria-hidden="true"></i>
+                            <span>X\u00f3a</span>
+                        </button>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderHero() {
+        if (!els.editor) {
+            return;
+        }
+
+        normalizeHeroOrder();
+        syncHeroCount();
+        if (!state.heroes.length) {
+            els.editor.innerHTML = `
                 <div class="admin-empty-state">
-                    <i data-lucide="plus" aria-hidden="true"></i>
-                    <span>Ch\u01b0a ch\u1ecdn phim</span>
+                    <i data-lucide="image-plus" aria-hidden="true"></i>
+                    <span>Ch\u01b0a ch\u1ecdn hero banner</span>
                 </div>
             `;
             refreshIcons();
             return;
         }
 
-        els.selectedList.innerHTML = state.selected.map((movie, index) => {
-            const image = getImage(movie);
-            const disabledClass = movie.enabled === false ? " is-disabled" : "";
-            return `
-                <article class="admin-selected-item${disabledClass}" data-admin-selected-index="${index}">
-                    <span class="admin-selected-order">${index + 1}</span>
-                    <div class="admin-movie-thumb">
-                        <img src="${escapeHtml(image)}" alt="${escapeHtml(movie.name)}" loading="lazy" decoding="async">
-                        ${renderSourceChip(movie)}
-                    </div>
-                    <div class="admin-selected-copy">
-                        <h3 title="${escapeHtml(movie.name)}">${escapeHtml(movie.name)}</h3>
-                        ${movie.original_name ? `<p title="${escapeHtml(movie.original_name)}">${escapeHtml(movie.original_name)}</p>` : ""}
-                        <div class="admin-language-row">${renderLanguageBadges(movie)}</div>
-                    </div>
-                    <div class="admin-visibility-cell">
-                        <span class="admin-visibility-dot${movie.enabled === false ? "" : " is-on"}" aria-hidden="true"></span>
-                        <span class="admin-visibility-label">${movie.enabled === false ? "\u0110ang \u1ea9n" : "\u0110ang chi\u1ebfu"}</span>
-                        <label class="admin-switch" title="B\u1eadt t\u1eaft hi\u1ec3n th\u1ecb">
-                            <input type="checkbox" data-admin-action="toggle" data-index="${index}" ${movie.enabled === false ? "" : "checked"}>
-                            <span></span>
-                        </label>
-                    </div>
-                    <div class="admin-row-actions">
-                        <button type="button" data-admin-action="up" data-index="${index}" ${index === 0 ? "disabled" : ""} aria-label="L\u00ean tr\u00ean">
-                            <i data-lucide="chevron-up" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" data-admin-action="down" data-index="${index}" ${index === state.selected.length - 1 ? "disabled" : ""} aria-label="Xu\u1ed1ng d\u01b0\u1edbi">
-                            <i data-lucide="chevron-down" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="admin-danger-btn" data-admin-action="remove" data-index="${index}" aria-label="X\u00f3a phim">
-                            <i data-lucide="trash-2" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                </article>
-            `;
-        }).join("");
+        els.editor.innerHTML = `
+            <div class="admin-hero-list">
+                ${state.heroes.map(renderHeroCard).join("")}
+            </div>
+        `;
+        syncHeroPreviews();
         refreshIcons();
     }
 
-    async function loadSelectedMovies() {
+    function applyHeroPayload(payload) {
+        state.heroes = payload?.enabled === false
+            ? []
+            : getItems(payload).map((movie) => normalizeMovie(movie, movie.source));
+        normalizeHeroOrder();
+    }
+
+    async function loadHero() {
         try {
             setSaveState("saving", "\u0110ang t\u1ea3i");
-            const payload = await fetchJson(MANAGED_API_URL);
-            state.selected = dedupeMovies(getItems(payload).map((movie) => normalizeMovie(movie, movie.source)));
-            normalizeOrder();
-            renderSelected();
+            const payload = await fetchJson(HERO_API_URL);
+            applyHeroPayload(payload);
+            renderHero();
             renderResults();
             setSaveState("saved", "\u0110\u00e3 s\u1eb5n s\u00e0ng");
         } catch (error) {
-            console.error("Cannot load managed movies", error);
+            console.error("Cannot load hero banner", error);
             setSaveState("error", "L\u1ed7i t\u1ea3i d\u1eef li\u1ec7u");
-            notify("Kh\u00f4ng th\u1ec3 t\u1ea3i danh s\u00e1ch qu\u1ea3n l\u00fd.", "error");
+            notify("Kh\u00f4ng th\u1ec3 t\u1ea3i hero banner.", "error");
         }
     }
 
@@ -536,75 +629,117 @@
         }
     }
 
-    function queueSave(message = "\u0110\u00e3 l\u01b0u") {
+    function queueSaveHero(message = "\u0110\u00e3 l\u01b0u hero banner.") {
         setSaveState("saving", "\u0110ang l\u01b0u");
         state.saveQueue = state.saveQueue
             .catch(() => {})
             .then(async () => {
-                normalizeOrder();
-                const payload = state.selected.map((movie) => ({ ...movie }));
-                const response = await fetchJson(MANAGED_API_URL, {
+                normalizeHeroOrder();
+                const response = await fetchJson(HERO_API_URL, {
                     method: "PUT",
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        enabled: state.heroes.length > 0,
+                        items: state.heroes.map((movie, index) => ({
+                            ...movie,
+                            enabled: true,
+                            order: index + 1
+                        }))
+                    })
                 });
-                state.selected = dedupeMovies(getItems(response).map((movie) => normalizeMovie(movie, movie.source)));
-                normalizeOrder();
-                renderSelected();
+                applyHeroPayload(response);
+                renderHero();
                 renderResults();
                 setSaveState("saved", "\u0110\u00e3 l\u01b0u");
                 notify(message);
             })
             .catch((error) => {
-                console.error("Cannot save managed movies", error);
+                console.error("Cannot save hero banner", error);
                 setSaveState("error", "L\u1ed7i l\u01b0u");
-                notify("Kh\u00f4ng th\u1ec3 l\u01b0u danh s\u00e1ch phim.", "error");
+                notify("Kh\u00f4ng th\u1ec3 l\u01b0u hero banner.", "error");
             });
     }
 
-    function addMovie(index) {
+    function addHeroMovie(index) {
         const movie = state.results[index];
-        if (!movie || isSelected(movie)) {
+        if (!movie || isHeroSelected(movie)) {
+            return;
+        }
+        if (state.heroes.length >= MAX_HERO_ITEMS) {
+            notify("Ch\u1ec9 ch\u1ecdn t\u1ed1i \u0111a 6 phim cho hero banner.", "error");
+            renderResults();
             return;
         }
 
-        state.selected.push({
+        state.heroes.push(normalizeMovie({
             ...movie,
+            tmdb_thumb_url: "",
+            tmdb_logo_url: "",
             enabled: true,
-            order: state.selected.length + 1,
+            order: state.heroes.length + 1,
             added_at: new Date().toISOString()
+        }, movie.source));
+        normalizeHeroOrder();
+        renderHero();
+        renderResults();
+        queueSaveHero("\u0110\u00e3 th\u00eam phim v\u00e0o hero banner.");
+    }
+
+    function removeHeroMovie(index) {
+        if (!state.heroes[index]) {
+            return;
+        }
+        state.heroes.splice(index, 1);
+        normalizeHeroOrder();
+        renderHero();
+        renderResults();
+        queueSaveHero("\u0110\u00e3 x\u00f3a phim kh\u1ecfi hero banner.");
+    }
+
+    function moveHeroMovie(fromIndex, toIndex) {
+        if (fromIndex === toIndex || !state.heroes[fromIndex] || toIndex < 0 || toIndex >= state.heroes.length) {
+            return;
+        }
+        const [movie] = state.heroes.splice(fromIndex, 1);
+        state.heroes.splice(toIndex, 0, movie);
+        normalizeHeroOrder();
+        renderHero();
+        renderResults();
+        queueSaveHero("\u0110\u00e3 l\u01b0u th\u1ee9 t\u1ef1 hero banner.");
+    }
+
+    function updateHeroField(input) {
+        const index = Number.parseInt(input?.dataset?.adminHeroIndex, 10);
+        const field = input?.dataset?.adminHeroField;
+        if (!Number.isFinite(index) || !field || !state.heroes[index]) {
+            return;
+        }
+
+        state.heroes[index][field] = text(input.value);
+        syncHeroPreview(index);
+    }
+
+    function closeSourceMenu() {
+        els.sourceWidget?.classList.remove("is-open");
+        els.sourceTrigger?.setAttribute("aria-expanded", "false");
+    }
+
+    function setSource(value, shouldSearch = false) {
+        const source = Object.prototype.hasOwnProperty.call(SOURCE_LABELS, value) ? value : "all";
+        state.source = source;
+        if (els.sourceInput) {
+            els.sourceInput.value = source;
+        }
+        if (els.sourceLabel) {
+            els.sourceLabel.textContent = SOURCE_LABELS[source];
+        }
+        els.sourceOptions.forEach((option) => {
+            const isSelected = option.dataset.adminHeroSourceOption === source;
+            option.classList.toggle("is-selected", isSelected);
+            option.setAttribute("aria-selected", String(isSelected));
         });
-        renderSelected();
-        renderResults();
-        queueSave("\u0110\u00e3 th\u00eam phim.");
-    }
-
-    function removeMovie(index) {
-        if (!state.selected[index]) {
-            return;
+        if (shouldSearch && text(els.searchInput?.value)) {
+            searchMovies(els.searchInput.value);
         }
-        state.selected.splice(index, 1);
-        renderSelected();
-        renderResults();
-        queueSave("\u0110\u00e3 x\u00f3a phim.");
-    }
-
-    function moveMovie(fromIndex, toIndex) {
-        if (fromIndex === toIndex || !state.selected[fromIndex] || toIndex < 0 || toIndex >= state.selected.length) {
-            return;
-        }
-        const [movie] = state.selected.splice(fromIndex, 1);
-        state.selected.splice(toIndex, 0, movie);
-        renderSelected();
-        queueSave("\u0110\u00e3 l\u01b0u th\u1ee9 t\u1ef1.");
-    }
-
-    function toggleMovie(index, enabled) {
-        if (!state.selected[index]) {
-            return;
-        }
-        state.selected[index].enabled = enabled;
-        renderSelected();
-        queueSave("\u0110\u00e3 c\u1eadp nh\u1eadt hi\u1ec3n th\u1ecb.");
     }
 
     function bindEvents() {
@@ -621,7 +756,7 @@
 
         els.sourceOptions.forEach((option) => {
             option.addEventListener("click", () => {
-                setSource(option.dataset.adminSourceOption || "all", true);
+                setSource(option.dataset.adminHeroSourceOption || "all", true);
                 closeSourceMenu();
                 els.sourceTrigger?.focus();
             });
@@ -640,43 +775,55 @@
         });
 
         els.results?.addEventListener("click", (event) => {
-            const addButton = event.target.closest("[data-admin-add]");
-            if (addButton) {
-                addMovie(Number.parseInt(addButton.dataset.adminAdd, 10));
+            const button = event.target.closest("[data-admin-hero-pick]");
+            if (!button) {
+                return;
             }
+            addHeroMovie(Number.parseInt(button.dataset.adminHeroPick, 10));
         });
 
-        els.selectedList?.addEventListener("click", (event) => {
-            const button = event.target.closest("[data-admin-action]");
+        els.editor?.addEventListener("input", (event) => {
+            const input = event.target.closest("[data-admin-hero-field]");
+            if (!input) {
+                return;
+            }
+            updateHeroField(input);
+        });
+
+        els.editor?.addEventListener("change", (event) => {
+            const input = event.target.closest("[data-admin-hero-field]");
+            if (!input) {
+                return;
+            }
+            updateHeroField(input);
+            queueSaveHero("\u0110\u00e3 c\u1eadp nh\u1eadt hero banner.");
+        });
+
+        els.editor?.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-admin-hero-action]");
             if (!button) {
                 return;
             }
 
-            const index = Number.parseInt(button.dataset.index, 10);
-            const action = button.dataset.adminAction;
-            if (action === "remove") {
-                removeMovie(index);
+            const index = Number.parseInt(button.dataset.adminHeroIndex, 10);
+            const action = button.dataset.adminHeroAction;
+            if (action === "save") {
+                queueSaveHero("\u0110\u00e3 l\u01b0u hero banner.");
+            } else if (action === "remove") {
+                removeHeroMovie(index);
             } else if (action === "up") {
-                moveMovie(index, index - 1);
+                moveHeroMovie(index, index - 1);
             } else if (action === "down") {
-                moveMovie(index, index + 1);
+                moveHeroMovie(index, index + 1);
             }
         });
 
-        els.selectedList?.addEventListener("change", (event) => {
-            const input = event.target.closest("[data-admin-action='toggle']");
-            if (!input) {
-                return;
-            }
-            toggleMovie(Number.parseInt(input.dataset.index, 10), input.checked);
-        });
-
-        els.saveOrder?.addEventListener("click", () => {
-            queueSave("\u0110\u00e3 l\u01b0u danh s\u00e1ch.");
+        els.saveButton?.addEventListener("click", () => {
+            queueSaveHero("\u0110\u00e3 l\u01b0u hero banner.");
         });
     }
 
     bindEvents();
     setSource(els.sourceInput?.value || state.source);
-    loadSelectedMovies();
+    loadHero();
 })();

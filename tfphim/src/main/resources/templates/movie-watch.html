@@ -90,7 +90,7 @@
             <div class="watch-info-card">
                 <div class="watch-info-mobile-bar">
                     <a class="watch-info-mobile-back"
-                       th:href="@{/phim/{slug}(slug=${movie['slug']})}"
+                       th:href="${movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug']}"
                        aria-label="Quay lại trang chi tiết">
                         <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                     </a>
@@ -169,7 +169,7 @@
                     <p class="watch-description" th:text="${movieDescription ?: 'Chưa có mô tả cho phim này.'}">Mô tả phim</p>
 
                     <div class="watch-info-actions">
-                        <a class="watch-detail-link" th:href="@{/phim/{slug}(slug=${movie['slug']})}">
+                        <a class="watch-detail-link" th:href="${movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug']}">
                             Thông tin phim <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                         </a>
                     </div>
@@ -179,6 +179,21 @@
         <section class="detail-section detail-server-section" th:if="${showServerCards}">
             <div class="detail-server-section__head">
                 <h2 class="detail-server-section__title">Các bản chiếu</h2>
+                <div class="episode-source-control" th:if="${sourceOptions != null and !#lists.isEmpty(sourceOptions)}">
+                    <span class="episode-source-control__label">M&#225;y Ch&#7911;</span>
+                    <label class="episode-source-select">
+                        <i class="fa-solid fa-server" aria-hidden="true"></i>
+                        <select data-movie-source-select aria-label="Chon may chu">
+                            <option th:each="sourceOption : ${sourceOptions}"
+                                    th:value="${sourceOption['watch_url']}"
+                                    th:selected="${sourceOption['active']}"
+                                    th:text="${sourceOption['label']}">
+                                KK
+                            </option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </label>
+                </div>
             </div>
 
             <div class="detail-server-grid" th:if="${!#lists.isEmpty(detailServerCards)}">
@@ -223,6 +238,21 @@
                                 </span>
                                 <span class="episode-part-dropdown-divider" aria-hidden="true"></span>
                             </button>
+                        </div>
+                        <div class="episode-source-control" th:if="${sourceOptions != null and !#lists.isEmpty(sourceOptions)}">
+                            <span class="episode-source-control__label">M&#225;y Ch&#7911;</span>
+                            <label class="episode-source-select">
+                                <i class="fa-solid fa-server" aria-hidden="true"></i>
+                                <select data-movie-source-select aria-label="Chon may chu">
+                                    <option th:each="sourceOption : ${sourceOptions}"
+                                            th:value="${sourceOption['watch_url']}"
+                                            th:selected="${sourceOption['active']}"
+                                            th:text="${sourceOption['label']}">
+                                        KK
+                                    </option>
+                                </select>
+                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -279,7 +309,7 @@
                                 <a class="episode-item"
                                    th:each="episode : ${page['items']}"
                                    th:classappend="${selectedServer == serverItem['server_name'] and selectedTap == episode['slug']} ? ' active'"
-                                   th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${serverItem['server_name']})}">
+                                   th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},source=${episode['source']},server=${serverItem['server_name']})}">
                                     <span class="episode-item-label">
                                         <i class="fa-solid fa-play" aria-hidden="true"></i>
                                         <span th:text="${episode['name'] != null and #strings.startsWith(#strings.toLowerCase(#strings.trim(episode['name'])), 'tập') ? episode['name'] : 'Tập ' + episode['name']}">Tập 1</span>
@@ -323,7 +353,7 @@
         <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
         <h1>Không tải được trang xem</h1>
         <p th:text="${errorMessage}">Không thể tải trang xem phim vào lúc này.</p>
-        <a th:if="${movie != null and movie['slug'] != null}" th:href="@{/phim/{slug}(slug=${movie['slug']})}" class="primary-btn">Về trang chi tiết</a>
+        <a th:if="${movie != null and movie['slug'] != null}" th:href="${movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug']}" class="primary-btn">Về trang chi tiết</a>
         <a href="/" class="secondary-btn">Về trang chủ</a>
     </div>
 </main>

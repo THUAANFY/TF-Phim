@@ -141,7 +141,7 @@
                     <div class="detail-weekly-top__list">
                         <a class="detail-weekly-top__item"
                            th:each="topMovie, topStat : ${weeklyTopMovies}"
-                           th:href="@{/phim/{slug}(slug=${topMovie['slug']})}">
+                           th:href="${topMovie['detail_url'] != null and topMovie['detail_url'] != '' ? topMovie['detail_url'] : '/phim/' + topMovie['slug']}">
                             <span class="detail-weekly-top__rank" th:text="${topStat.index + 1}">1</span>
                             <span class="detail-weekly-top__poster">
                                 <img th:src="${topMovie['top_poster_url'] != null and topMovie['top_poster_url'] != '' ? topMovie['top_poster_url'] : (topMovie['poster_url'] != null and topMovie['poster_url'] != '' ? topMovie['poster_url'] : topMovie['thumb_url'])}"
@@ -176,7 +176,7 @@
                 <div class="detail-actions detail-actions--top">
                     <a class="primary-btn detail-watch-cta"
                        th:if="${isTrailerMovie}"
-                       th:href="${movie['trailer_url'] != null and movie['trailer_url'] != '' ? movie['trailer_url'] : '/phim/' + movie['slug']}">
+                       th:href="${movie['trailer_url'] != null and movie['trailer_url'] != '' ? movie['trailer_url'] : (movie['detail_url'] != null and movie['detail_url'] != '' ? movie['detail_url'] : '/phim/' + movie['slug'])}">
                         <span class="detail-watch-cta__icon" aria-hidden="true">
                             <i class="fa-solid fa-video" aria-hidden="true"></i>
                             <span class="detail-watch-cta__title">Xem Trailer</span>
@@ -187,7 +187,7 @@
                     </a>
                     <a class="primary-btn"
                        th:unless="${isTrailerMovie}"
-                       th:href="@{/xem/{slug}(slug=${movie['slug']})}">
+                       th:href="${movie['watch_url'] != null and movie['watch_url'] != '' ? movie['watch_url'] : '/xem/' + movie['slug']}">
                         <i class="fa-solid fa-play" aria-hidden="true"></i>
                         <span class="detail-watch-text-desktop">Xem phim</span>
                         <span class="detail-watch-text-mobile">Xem Ngay</span>
@@ -257,6 +257,21 @@
                     <section class="detail-section detail-server-section" th:if="${showServerCards}">
                         <div class="detail-server-section__head">
                             <h2 class="detail-server-section__title">Các bản chiếu</h2>
+                            <div class="episode-source-control" th:if="${sourceOptions != null and !#lists.isEmpty(sourceOptions)}">
+                                <span class="episode-source-control__label">M&#225;y Ch&#7911;</span>
+                                <label class="episode-source-select">
+                                    <i class="fa-solid fa-server" aria-hidden="true"></i>
+                                    <select data-movie-source-select aria-label="Chon may chu">
+                                        <option th:each="sourceOption : ${sourceOptions}"
+                                                th:value="${sourceOption['detail_url']}"
+                                                th:selected="${sourceOption['active']}"
+                                                th:text="${sourceOption['label']}">
+                                            KK
+                                        </option>
+                                    </select>
+                                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="detail-server-grid" th:if="${!#lists.isEmpty(detailServerCards)}">
@@ -301,6 +316,21 @@
                                             </span>
                                             <span class="episode-part-dropdown-divider" aria-hidden="true"></span>
                                         </button>
+                                    </div>
+                                    <div class="episode-source-control" th:if="${sourceOptions != null and !#lists.isEmpty(sourceOptions)}">
+                                        <span class="episode-source-control__label">M&#225;y Ch&#7911;</span>
+                                        <label class="episode-source-select">
+                                            <i class="fa-solid fa-server" aria-hidden="true"></i>
+                                            <select data-movie-source-select aria-label="Chon may chu">
+                                                <option th:each="sourceOption : ${sourceOptions}"
+                                                        th:value="${sourceOption['detail_url']}"
+                                                        th:selected="${sourceOption['active']}"
+                                                        th:text="${sourceOption['label']}">
+                                                    KK
+                                                </option>
+                                            </select>
+                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -355,7 +385,7 @@
                                          th:attr="data-page=${page['pageNumber']}">
                                         <div class="episode-list detail-episode-list">
                                             <a class="episode-item" th:each="episode : ${page['items']}"
-                                               th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},server=${server['server_name']})}">
+                                               th:href="@{/xem/{slug}/{tap}(slug=${movie['slug']},tap=${episode['slug']},source=${episode['source']},server=${server['server_name']})}">
                                                 <span class="episode-item-label">
                                                     <i class="fa-solid fa-play" aria-hidden="true"></i>
                                                     <span th:text="${episode['name'] != null and #strings.startsWith(#strings.toLowerCase(#strings.trim(episode['name'])), 'tập') ? episode['name'] : 'Tập ' + episode['name']}">Tập 1</span>

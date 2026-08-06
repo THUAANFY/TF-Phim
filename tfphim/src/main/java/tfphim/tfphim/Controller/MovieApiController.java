@@ -73,9 +73,16 @@ public class MovieApiController {
     }
 
     @GetMapping(value = "/{slug}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> getMovieDetail(@PathVariable String slug) {
+    public ResponseEntity<?> getMovieDetail(
+            @PathVariable String slug,
+            @RequestParam(defaultValue = "") String source
+    ) {
         try {
-            return ResponseEntity.ok(movieApiService.getMovieDetail(slug));
+            String requestedSource = source == null ? "" : source.trim();
+            if (!requestedSource.isBlank()) {
+                return ResponseEntity.ok(movieApiService.getMovieDetailData(slug, requestedSource));
+            }
+            return ResponseEntity.ok(movieApiService.getMovieDetailData(slug));
         } catch (org.springframework.web.client.RestClientException ex) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                     .body("{\"status\":\"error\",\"message\":\"Khong the tai chi tiet phim.\"}");
